@@ -1,0 +1,461 @@
+blueprint:
+  name: Smart Heating Management (Winter - Celsius)
+  description: Intelligent control of heating systems based on indoor temperature, extreme cold forecast, and electricity peak periods. All temperature thresholds are in **Celsius**.
+  domain: automation
+  input:
+    indoor_temperature_sensor:
+      name: Indoor Temperature Sensor
+      description: The indoor temperature sensor entity.
+      selector:
+        entity:
+          domain: sensor
+          device_class: temperature
+    outdoor_temperature_sensor:
+      name: Outdoor Temperature Sensor (Optional)
+      description: The outdoor temperature sensor for checking weather conditions.
+      selector:
+        entity:
+          domain: sensor
+          device_class: temperature
+      default: ""
+    weather_forecast_entity:
+      name: Weather Forecast Entity (Optional - for Extreme Cold Alert)
+      description: Select your weather entity (e.g., weather.your_location) to get daily temperature forecasts.
+      selector:
+        entity:
+          domain: weather
+      default: ""
+    window_sensor_entities:
+      name: Window/Door Sensors (Optional)
+      description: Multiple binary sensors for windows or doors. Heating will be impacted if any are open.
+      selector:
+        entity:
+          domain: binary_sensor
+          device_class:
+            - opening
+            - window
+            - door
+          multiple: true
+      default: []
+    
+    heating_entities:
+      name: Heating Climate Entities
+      description: Select one or more climate entities (thermostats, smart heaters) to control for heating.
+      selector:
+        entity:
+          domain: climate
+          multiple: true
+
+    # --- General Heating Thresholds ---
+    heating_start_threshold:
+      name: Heating Start Threshold (Indoor)
+      description: Indoor temperature at which heating should activate.
+      selector:
+        number:
+          min: 18
+          max: 25
+          step: 0.5
+          unit_of_measurement: "°C"
+      default: 20.0
+    heating_stop_threshold:
+      name: Heating Stop Threshold (Indoor)
+      description: Indoor temperature at which heating should turn off. Must be lower than 'Heating Start Threshold' for proper hysteresis.
+      selector:
+        number:
+          min: 16
+          max: 23
+          step: 0.5
+          unit_of_measurement: "°C"
+      default: 19.0
+    
+    # --- Extreme Cold Anticipation ---
+    enable_extreme_cold_management:
+      name: Enable Extreme Cold Anticipation?
+      description: If enabled, heating behavior will adjust based on outdoor extreme cold forecasts.
+      selector:
+        boolean:
+      default: true
+    cold_weather_forecast_threshold:
+      name: Forecasted Extreme Cold Threshold (Outdoor)
+      description: Daily minimum forecasted temperature (from weather entity) below which "extreme cold" is considered announced.
+      selector:
+        number:
+          min: -40
+          max: 0
+          step: 1
+          unit_of_measurement: "°C"
+      default: -25.0
+    cold_weather_indoor_target_temp:
+      name: Indoor Target Temp during Extreme Cold
+      description: Indoor temperature the system will aim for when extreme cold is forecasted. This overrides normal heat thresholds.
+      selector:
+        number:
+          min: 19
+          max: 24
+          step: 0.5
+          unit_of_measurement: "°C"
+      default: 21.0
+
+    # --- Electricity Peak Management ---
+    enable_peak_management:
+      name: Enable Electricity Peak Management?
+      description: If enabled, heating will adjust before and during electricity peak periods to save energy/cost.
+      selector:
+        boolean:
+      default: false
+    
+    peak_type_selection:
+      name: Peak Period Detection Method
+      description: Choose how peak periods are detected. "Sensor-based" requires specific binary sensors from your utility. "Manual Time-based" uses fixed daily hours.
+      selector:
+        select:
+          options:
+            - label: None (no peak management)
+              value: none
+            - label: Sensor-based (e.g., from utility API)
+              value: sensor
+            - label: Manual Time-based (fixed daily hours)
+              value: manual_time
+      default: none
+
+    peak_warning_sensor_entity:
+      name: Peak Warning Sensor (Optional - Sensor-based)
+      description: Binary sensor (e.g., 'on' for 1-2 hours before peak) that indicates an upcoming peak period.
+      selector:
+        entity:
+          domain: binary_sensor
+          device_class:
+            - power
+            - problem # or other generic device_class if power is not available
+      default: ""
+    peak_start_sensor_entity:
+      name: Peak Start Sensor (Optional - Sensor-based)
+      description: Binary sensor (e.g., 'on' during the actual peak period).
+      selector:
+        entity:
+          domain: binary_sensor
+          device_class:
+            - power
+            - problem
+      default: ""
+    
+    manual_peak_pre_start_time:
+      name: Manual Peak Pre-Start Time (HH:MM - Manual Time-based)
+      description: Time when the pre-peak heating boost should start. (e.g., 16:00 for a 17:00-19:00 peak)
+      selector:
+        time:
+      default: "16:00:00"
+    manual_peak_start_time:
+      name: Manual Peak Start Time (HH:MM - Manual Time-based)
+      description: Time when the actual peak period starts and heating should be reduced.
+      selector:
+        time:
+      default: "17:00:00"
+    manual_peak_end_time:
+      name: Manual Peak End Time (HH:MM - Manual Time-based)
+      description: Time when the actual peak period ends and heating returns to normal.
+      selector:
+        time:
+      default: "19:00:00"
+    
+    peak_heat_raise_offset:
+      name: Heat Raise Offset (Pre-Peak)
+      description: Degrees Celsius to add to the target temperature BEFORE a peak period (e.g., 1.0 to heat up by 1°C).
+      selector:
+        number:
+          min: 0.0
+          max: 3.0
+          step: 0.1
+          unit_of_measurement: "°C"
+      default: 1.0
+    peak_heat_reduce_offset:
+      name: Heat Reduce Offset (During Peak)
+      description: Degrees Celsius to subtract from the target temperature DURING a peak period (e.g., 1.5 to reduce by 1.5°C).
+      selector:
+        number:
+          min: 0.0
+          max: 3.0
+          step: 0.1
+          unit_of_measurement: "°C"
+      default: 1.5
+
+mode: queued
+max_exceeded: silent
+
+variables:
+  # Input variables (renamed for clarity in English version)
+  room_temp_sensor: !input indoor_temperature_sensor
+  outdoor_temp_sensor: !input outdoor_temperature_sensor
+  weather_forecast_entity: !input weather_forecast_entity
+  window_sensors: !input window_sensor_entities
+  heating_entities_list: !input heating_entities # Renamed to avoid conflict with `heating_entity` in repeat loop
+  
+  heating_start_temp: !input heating_start_threshold
+  heating_stop_temp: !input heating_stop_threshold
+  
+  enable_extreme_cold_management: !input enable_extreme_cold_management
+  cold_weather_forecast_threshold: !input cold_weather_forecast_threshold
+  cold_weather_indoor_target_temp: !input cold_weather_indoor_target_temp
+
+  enable_peak_management: !input enable_peak_management
+  peak_type_selection: !input peak_type_selection
+  peak_warning_sensor_entity: !input peak_warning_sensor_entity
+  peak_start_sensor_entity: !input peak_start_sensor_entity
+  manual_peak_pre_start_time: !input manual_peak_pre_start_time
+  manual_peak_start_time: !input manual_peak_start_time
+  manual_peak_end_time: !input manual_peak_end_time
+  peak_heat_raise_offset: !input peak_heat_raise_offset
+  peak_heat_reduce_offset: !input peak_heat_reduce_offset
+
+  # Calculated variables for current state
+  current_room_temp: "{{ states(room_temp_sensor) | float(0) }}"
+  current_outdoor_temp: "{{ states(outdoor_temp_sensor) | float(999) }}"
+  is_window_open: >
+    {% if window_sensors is not none and window_sensors | length > 0 %}
+      {{ window_sensors | map('states') | select('equalto', 'on') | list | length > 0 }}
+    {% else %}
+      {{ false }}
+    {% endif %}
+
+  # Check for extreme cold forecast (uses tomorrow's min temp if available, otherwise today's min temp)
+  is_extreme_cold_forecasted: >
+    {% if enable_extreme_cold_management and weather_forecast_entity != '' %}
+      {% set forecast = state_attr(weather_forecast_entity, 'forecast') %}
+      {% if forecast is not none and forecast | length > 0 %}
+        {# Check tomorrow's minimum temperature if available, otherwise today's #}
+        {% set min_temp_today = forecast[0].templow | float(999) %}
+        {% set min_temp_tomorrow = forecast[1].templow | float(999) if forecast | length > 1 else 999 %}
+        {# Consider extreme cold if today's or tomorrow's min temp is below threshold #}
+        {{ min_temp_today <= cold_weather_forecast_threshold or min_temp_tomorrow <= cold_weather_forecast_threshold }}
+      {% else %}
+        {{ false }}
+      {% endif %}
+    {% else %}
+      {{ false }}
+    {% endif %}
+
+  # Determine peak period status based on selected method
+  is_pre_peak: >
+    {% if enable_peak_management %}
+      {% if peak_type_selection == 'sensor' and peak_warning_sensor_entity != '' %}
+        {{ is_state(peak_warning_sensor_entity, 'on') }}
+      {% elif peak_type_selection == 'manual_time' %}
+        {% set now = now().time() %}
+        {% set pre_start = manual_peak_pre_start_time | as_time %}
+        {% set peak_start = manual_peak_start_time | as_time %}
+        {{ now >= pre_start and now < peak_start }}
+      {% else %}
+        {{ false }}
+      {% endif %}
+    {% else %}
+      {{ false }}
+    {% endif %}
+
+  is_peak_period: >
+    {% if enable_peak_management %}
+      {% if peak_type_selection == 'sensor' and peak_start_sensor_entity != '' %}
+        {{ is_state(peak_start_sensor_entity, 'on') }}
+      {% elif peak_type_selection == 'manual_time' %}
+        {% set now = now().time() %}
+        {% set peak_start = manual_peak_start_time | as_time %}
+        {% set peak_end = manual_peak_end_time | as_time %}
+        {{ now >= peak_start and now < peak_end }}
+      {% else %}
+        {{ false }}
+      {% endif %}
+    {% else %}
+      {{ false }}
+    {% endif %}
+
+trigger:
+  - platform: state
+    entity_id: !input indoor_temperature_sensor
+    id: indoor_temp_change
+  - platform: state
+    entity_id: !input outdoor_temperature_sensor
+    id: outdoor_temp_change
+  - platform: state
+    entity_id: !input weather_forecast_entity
+    attribute: forecast # Trigger on any change in forecast data (e.g., min/max temp)
+    id: weather_forecast_change
+  - platform: state
+    entity_id: "{{ peak_warning_sensor_entity }}"
+    id: peak_warning_sensor_change
+    enabled: "{{ enable_peak_management and peak_type_selection == 'sensor' and peak_warning_sensor_entity != '' }}"
+  - platform: state
+    entity_id: "{{ peak_start_sensor_entity }}"
+    id: peak_start_sensor_change
+    enabled: "{{ enable_peak_management and peak_type_selection == 'sensor' and peak_start_sensor_entity != '' }}"
+  - platform: time
+    at:
+      - "{{ manual_peak_pre_start_time }}"
+      - "{{ manual_peak_start_time }}"
+      - "{{ manual_peak_end_time }}"
+    id: manual_peak_time_change
+    enabled: "{{ enable_peak_management and peak_type_selection == 'manual_time' }}"
+  - platform: state
+    entity_id: "{{ window_sensors }}"
+    id: window_sensor_change
+    enabled: "{{ window_sensors is not none and window_sensors | length > 0 }}"
+    to: 'off' # Trigger when windows close
+    from: 'on'
+  - platform: state
+    entity_id: "{{ window_sensors }}"
+    id: window_sensor_open
+    enabled: "{{ window_sensors is not none and window_sensors | length > 0 }}"
+    to: 'on' # Trigger when windows open
+    from: 'off'
+
+condition:
+  - condition: template
+    value_template: >
+      {{ states(room_temp_sensor) not in ['unavailable', 'unknown'] and
+         states(outdoor_temp_sensor) not in ['unavailable', 'unknown'] }}
+
+action:
+  - repeat:
+      for_each: "{{ heating_entities_list }}"
+      sequence:
+        - variables:
+            heating_entity: "{{ repeat.item }}" # Renamed current_climate_entity to heating_entity for clarity
+            target_heating_temp: "{{ heating_start_temp }}" # Default target, will be adjusted by conditions below
+
+        - choose:
+            # --- Condition 1: During Peak Period (Highest Priority for Cost Saving) ---
+            - conditions:
+                - condition: template
+                  value_template: "{{ is_peak_period }}"
+                - condition: template
+                  value_template: "{{ not is_window_open }}" # Only adjust if windows are closed
+              sequence:
+                - variables:
+                    target_heating_temp: "{{ (heating_stop_temp - peak_heat_reduce_offset) | round(1) }}"
+                - if: # Idempotence to set HVAC mode and temperature
+                    - condition: template
+                      value_template: >
+                        {{ states(heating_entity) != 'heat' or
+                           state_attr(heating_entity, 'temperature') | float(0) != target_heating_temp }}
+                  then:
+                    - service: climate.set_hvac_mode
+                      target:
+                        entity_id: "{{ heating_entity }}"
+                      data:
+                        hvac_mode: 'heat'
+                    - service: climate.set_temperature
+                      target:
+                        entity_id: "{{ heating_entity }}"
+                      data:
+                        temperature: "{{ target_heating_temp }}"
+            
+            # --- Condition 2: Pre-Peak Period (High Priority for Pre-heating) ---
+            - conditions:
+                - condition: template
+                  value_template: "{{ is_pre_peak }}"
+                - condition: template
+                  value_template: "{{ not is_window_open }}" # Only pre-heat if windows are closed
+              sequence:
+                - variables:
+                    target_heating_temp: "{{ (heating_start_temp + peak_heat_raise_offset) | round(1) }}"
+                - if: # Idempotence to set HVAC mode and temperature
+                    - condition: template
+                      value_template: >
+                        {{ states(heating_entity) != 'heat' or
+                           state_attr(heating_entity, 'temperature') | float(0) != target_heating_temp }}
+                  then:
+                    - service: climate.set_hvac_mode
+                      target:
+                        entity_id: "{{ heating_entity }}"
+                      data:
+                        hvac_mode: 'heat'
+                    - service: climate.set_temperature
+                      target:
+                        entity_id: "{{ heating_entity }}"
+                      data:
+                        temperature: "{{ target_heating_temp }}"
+
+            # --- Condition 3: Extreme Cold Forecast (Anticipatory Heating) ---
+            - conditions:
+                - condition: template
+                  value_template: "{{ enable_extreme_cold_management and is_extreme_cold_forecasted }}"
+                - condition: template
+                  value_template: "{{ not is_window_open }}" # Only adjust if windows are closed
+              sequence:
+                - variables:
+                    target_heating_temp: "{{ cold_weather_indoor_target_temp }}"
+                - if: # Idempotence to set HVAC mode and temperature
+                    - condition: template
+                      value_template: >
+                        {{ states(heating_entity) != 'heat' or
+                           state_attr(heating_entity, 'temperature') | float(0) != target_heating_temp }}
+                  then:
+                    - service: climate.set_hvac_mode
+                      target:
+                        entity_id: "{{ heating_entity }}"
+                      data:
+                        hvac_mode: 'heat'
+                    - service: climate.set_temperature
+                      target:
+                        entity_id: "{{ heating_entity }}"
+                      data:
+                        temperature: "{{ target_heating_temp }}"
+
+            # --- Default Heating Logic (Normal Operation) ---
+            default:
+              - choose:
+                  # Turn OFF heating if window is open
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ is_window_open }}"
+                    sequence:
+                      - if: # Idempotence to turn off
+                          - condition: template
+                            value_template: "{{ states(heating_entity) != 'off' }}"
+                        then:
+                          - service: climate.turn_off
+                            target:
+                              entity_id: "{{ heating_entity }}"
+
+                  # Turn ON heating if temperature is below threshold and no window is open
+                  - conditions:
+                      - condition: template
+                        value_template: >
+                          {{ current_room_temp <= heating_stop_temp and
+                             states(heating_entity) != 'heat' and
+                             not is_window_open }}
+                    sequence:
+                      - service: climate.set_hvac_mode
+                        target:
+                          entity_id: "{{ heating_entity }}"
+                        data:
+                          hvac_mode: 'heat'
+                      - service: climate.set_temperature
+                        target:
+                          entity_id: "{{ heating_entity }}"
+                        data:
+                          temperature: "{{ heating_start_temp }}"
+
+                  # Turn OFF heating if temperature is high enough and no window is open
+                  - conditions:
+                      - condition: template
+                        value_template: >
+                          {{ current_room_temp >= heating_start_temp and
+                             states(heating_entity) == 'heat' and
+                             not is_window_open }}
+                    sequence:
+                      - service: climate.turn_off
+                        target:
+                          entity_id: "{{ heating_entity }}"
+                  
+                  # Adjust temperature if already in 'heat' mode and temperature threshold is met, no window open
+                  - conditions:
+                      - condition: template
+                        value_template: >
+                          {{ states(heating_entity) == 'heat' and
+                             state_attr(heating_entity, 'temperature') | float(0) != heating_start_temp and
+                             not is_window_open }}
+                    sequence:
+                      - service: climate.set_temperature
+                        target:
+                          entity_id: "{{ heating_entity }}"
+                        data:
+                          temperature: "{{ heating_start_temp }}"
