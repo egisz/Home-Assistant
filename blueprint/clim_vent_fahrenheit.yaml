@@ -1,100 +1,23 @@
 blueprint:
-  name: Advanced Ventilation/AC Management (Fahrenheit)
-  description: Intelligent control of fans and air conditioners based on indoor temperature, outdoor conditions, forecasted heatwave, and **multiple window/door open/close status**.
+  name: Advanced HVAC Management (Fahrenheit)
+  description: Intelligent control of fans and air conditioners based on indoor temperature, outdoor conditions, forecasted heatwave, and window/door status. All temperature thresholds are in **Fahrenheit**.
   domain: automation
   input:
     temperature_sensor:
       name: Room Temperature Sensor
+      description: The indoor temperature sensor entity.
       selector:
         entity:
           domain: sensor
           device_class: temperature
-    fan_on_off_entity:
-      name: On/Off Fan (Optional)
-      description: Switch entity for a simple ON/OFF fan.
-      selector:
-        entity:
-          domain: switch
-      default: ""
-    ceiling_fan_entity:
-      name: Ceiling Fan (Optional)
-      description: Fan entity or dimmable light entity for a ceiling fan.
-      selector:
-        entity:
-          domain: fan
-      default: ""
-    portable_ac_1_entity:
-      name: Portable AC 1 (Optional - Many Modes)
-      description: Climate entity for an AC with various fan modes (silent, low, medium, high, full, Auto).
-      selector:
-        entity:
-          domain: climate
-      default: ""
-    portable_ac_2_entity:
-      name: Portable AC 2 (Optional - Limited Modes)
-      description: Climate entity for an AC with limited fan modes (auto, low, medium, high).
-      selector:
-        entity:
-          domain: climate
-      default: ""
-    threshold_temp_start_fan:
-      name: Fan Start Threshold (Indoor)
-      description: Indoor temperature at which fans activate.
-      selector:
-        number:
-          min: 59
-          max: 86
-          step: 1
-          unit_of_measurement: "°F"
-      default: 75
-    threshold_temp_stop_fan:
-      name: Fan Stop Threshold (Indoor)
-      description: Indoor temperature at which fans turn off.
-      selector:
-        number:
-          min: 59
-          max: 86
-          step: 1
-          unit_of_measurement: "°F"
-      default: 72
-    threshold_temp_ac_high:
-      name: AC High Temperature Threshold
-      description: Indoor temperature to activate air conditioners in high mode.
-      selector:
-        number:
-          min: 68
-          max: 95
-          step: 1
-          unit_of_measurement: "°F"
-      default: 79
-    threshold_temp_ac_heatwave:
-      name: AC Heatwave Threshold (Indoor)
-      description: Indoor temperature to activate AC when a forecasted heatwave is detected. Should be lower than the normal threshold.
-      selector:
-        number:
-          min: 64
-          max: 77
-          step: 1
-          unit_of_measurement: "°F"
-      default: 72
     outdoor_temperature_sensor:
       name: Outdoor Temperature Sensor (Optional)
-      description: Outdoor temperature sensor for condition checks (actual outdoor temp).
+      description: The outdoor temperature sensor for outdoor condition checks.
       selector:
         entity:
           domain: sensor
           device_class: temperature
       default: ""
-    outdoor_temp_max_for_vent:
-      name: Max Outdoor Temp for Ventilation (Optional)
-      description: Maximum outdoor temperature to allow ventilation (to avoid bringing in hot air).
-      selector:
-        number:
-          min: 50
-          max: 86
-          step: 1
-          unit_of_measurement: "°F"
-      default: 77
     weather_forecast_entity:
       name: Weather Forecast Entity (Optional - for Heatwave Alert)
       description: Select your weather entity (e.g., weather.your_location) to get daily temperature forecasts.
@@ -102,16 +25,6 @@ blueprint:
         entity:
           domain: weather
       default: ""
-    forecast_temp_heatwave_threshold:
-      name: Forecasted Temp Heatwave Threshold (Outdoor)
-      description: Daily forecasted temperature (from weather entity) above which a heatwave is considered "announced".
-      selector:
-        number:
-          min: 77
-          max: 104
-          step: 1
-          unit_of_measurement: "°F"
-      default: 86
     window_sensor_entities:
       name: Window/Door Sensors (Optional - for AC only)
       description: Multiple binary sensors for windows or doors. AC will be impacted if any are open.
@@ -131,19 +44,224 @@ blueprint:
         boolean:
       default: true
 
+    # --- Fan Thresholds ---
+    fan_start_threshold:
+      name: Fan Start Threshold (Indoor)
+      description: Indoor temperature at which fans activate.
+      selector:
+        number:
+          min: 59 # 15C
+          max: 86 # 30C
+          step: 1
+          unit_of_measurement: "°F"
+      default: 75.2 # 24C
+    fan_stop_threshold:
+      name: Fan Stop Threshold (Indoor)
+      description: Indoor temperature at which fans turn off. This also serves as a general "all off" threshold.
+      selector:
+        number:
+          min: 59 # 15C
+          max: 86 # 30C
+          step: 1
+          unit_of_measurement: "°F"
+      default: 71.6 # 22C
+    outdoor_max_temp_for_vent:
+      name: Max Outdoor Temp for Fan Operation (Optional)
+      description: Maximum outdoor temperature allowed for fan operation (to avoid bringing in hot air).
+      selector:
+        number:
+          min: 50 # 10C
+          max: 95 # 35C
+          step: 1
+          unit_of_measurement: "°F"
+      default: 77.0 # 25C
+
+    # --- AC Thresholds ---
+    ac_cool_high_threshold:
+      name: AC High Cooling Threshold (Indoor)
+      description: Indoor temperature to activate AC cooling to a higher mode (e.g., Medium/High fan). This is the primary "AC on" threshold.
+      selector:
+        number:
+          min: 68 # 20C
+          max: 95 # 35C
+          step: 1
+          unit_of_measurement: "°F"
+      default: 78.8 # 26C
+    ac_cool_stop_threshold:
+      name: AC Stop Cooling Threshold (Indoor)
+      description: Indoor temperature at which the AC *stops* actively cooling (e.g., switches to fan-only or off). Must be lower than 'AC High Cooling Threshold' for proper hysteresis.
+      selector:
+        number:
+          min: 64 # 18C
+          max: 77 # 25C
+          step: 1
+          unit_of_measurement: "°F"
+      default: 73.4 # 23C
+    ac_heatwave_start_threshold:
+      name: AC Heatwave Start Threshold (Indoor)
+      description: Indoor temperature to activate AC when an outdoor heatwave is forecasted. This threshold overrides others if a heatwave is detected.
+      selector:
+        number:
+          min: 64 # 18C
+          max: 77 # 25C
+          step: 1
+          unit_of_measurement: "°F"
+      default: 71.6 # 22C
+    forecast_temp_heatwave_threshold:
+      name: Forecasted Heatwave Temperature Threshold (Outdoor)
+      description: Daily forecasted temperature (from weather entity) above which a heatwave is considered "announced."
+      selector:
+        number:
+          min: 77 # 25C
+          max: 104 # 40C
+          step: 1
+          unit_of_measurement: "°F"
+      default: 86.0 # 30C
+
+    # --- Temperature Steps/Offsets for AC/Ceiling Fan Modes ---
+    ac_cool_highest_offset:
+      name: AC Highest Cooling Offset (°F below high threshold)
+      description: Offset below 'AC High Cooling Threshold' to trigger highest AC fan speed (e.g., -3.6 means 3.6°F above high threshold, equivalent to -2°C). Use a negative value for "above".
+      selector:
+        number:
+          min: -9 # -5C
+          max: 9 # 5C
+          step: 0.5
+          unit_of_measurement: "°F"
+      default: -3.6 # -2C
+    ac_cool_high_offset:
+      name: AC High Cooling Offset (°F below high threshold)
+      description: Offset below 'AC High Cooling Threshold' to trigger high AC fan speed.
+      selector:
+        number:
+          min: -9 # -5C
+          max: 9 # 5C
+          step: 0.5
+          unit_of_measurement: "°F"
+      default: 0.0 # 0C
+    ac_cool_medium_offset:
+      name: AC Medium Cooling Offset (°F below high threshold)
+      description: Offset below 'AC High Cooling Threshold' to trigger medium AC fan speed.
+      selector:
+        number:
+          min: -9 # -5C
+          max: 9 # 5C
+          step: 0.5
+          unit_of_measurement: "°F"
+      default: 1.8 # 1C
+    ac_cool_low_offset:
+      name: AC Low Cooling Offset (°F below high threshold)
+      description: Offset below 'AC High Cooling Threshold' to trigger low AC fan speed.
+      selector:
+        number:
+          min: -9 # -5C
+          max: 9 # 5C
+          step: 0.5
+          unit_of_measurement: "°F"
+      default: 3.6 # 2C
+    ac_fan_only_offset:
+      name: AC Fan Only Offset (°F below high threshold)
+      description: Offset below 'AC High Cooling Threshold' to trigger AC fan-only mode (when not actively cooling).
+      selector:
+        number:
+          min: -9 # -5C
+          max: 9 # 5C
+          step: 0.5
+          unit_of_measurement: "°F"
+      default: 5.4 # 3C
+
+    # --- Device Entities ---
+    fan_on_off_entity:
+      name: On/Off Fan (Optional)
+      description: Switch entity for a simple ON/OFF fan.
+      selector:
+        entity:
+          domain: switch
+      default: ""
+    ceiling_fan_entity:
+      name: Ceiling Fan (Optional)
+      description: Fan entity or dimmable light entity for a ceiling fan (will use fan.set_percentage if supported, otherwise light.turn_on with brightness_pct).
+      selector:
+        entity:
+          domain: fan
+      default: ""
+    portable_ac_1_entity:
+      name: Portable AC 1 (Optional - Many Modes)
+      description: Climate entity for an AC with various fan modes (e.g., silent, low, medium, high, full, Auto).
+      selector:
+        entity:
+          domain: climate
+      default: ""
+    portable_ac_2_entity:
+      name: Portable AC 2 (Optional - Limited Modes)
+      description: Climate entity for an AC with limited fan modes (e.g., auto, low, medium, high).
+      selector:
+        entity:
+          domain: climate
+      default: ""
+
 mode: queued
+max_exceeded: silent
 
 variables:
+  # Input variables
+  room_temp_sensor: !input temperature_sensor
+  outdoor_temp_sensor: !input outdoor_temperature_sensor
+  weather_forecast_entity: !input weather_forecast_entity
+  window_sensor_entities: !input window_sensor_entities
+  turn_off_ac_on_window_open: !input turn_off_ac_on_window_open
+
+  fan_start_threshold: !input fan_start_threshold
+  fan_stop_threshold: !input fan_stop_threshold
+  outdoor_max_temp_for_vent: !input outdoor_max_temp_for_vent
+
+  ac_cool_high_threshold: !input ac_cool_high_threshold
+  ac_cool_stop_threshold: !input ac_cool_stop_threshold
+  ac_heatwave_start_threshold: !input ac_heatwave_start_threshold
+  forecast_temp_heatwave_threshold: !input forecast_temp_heatwave_threshold
+
+  ac_cool_highest_offset: !input ac_cool_highest_offset
+  ac_cool_high_offset: !input ac_cool_high_offset
+  ac_cool_medium_offset: !input ac_cool_medium_offset
+  ac_cool_low_offset: !input ac_cool_low_offset
+  ac_fan_only_offset: !input ac_fan_only_offset
+
   fan_on_off_entity: !input fan_on_off_entity
   ceiling_fan_entity: !input ceiling_fan_entity
   portable_ac_1_entity: !input portable_ac_1_entity
   portable_ac_2_entity: !input portable_ac_2_entity
-  outdoor_temperature_sensor: !input outdoor_temperature_sensor
-  threshold_temp_ac_heatwave: !input threshold_temp_ac_heatwave
-  weather_forecast_entity: !input weather_forecast_entity
-  forecast_temp_heatwave_threshold: !input forecast_temp_heatwave_threshold
-  window_sensor_entities: !input window_sensor_entities
-  turn_off_ac_on_window_open: !input turn_off_ac_on_window_open
+  
+  # Calculated variables for current state
+  current_room_temp: "{{ states(room_temp_sensor) | float(0) }}"
+  current_outdoor_temp: >
+    {% if outdoor_temp_sensor != '' %}
+      {{ states(outdoor_temp_sensor) | float(999) }}
+    {% else %}
+      {{ outdoor_max_temp_for_vent }}
+    {% endif %}
+
+  # Determine if a heatwave is forecasted
+  is_heatwave: >
+    {% if weather_forecast_entity != '' %}
+      {% set forecast = state_attr(weather_forecast_entity, 'forecast') %}
+      {% if forecast is not none and forecast | length > 0 %}
+        {% set today_max_temp = forecast[0].temperature | float(0) %}
+        {{ today_max_temp >= forecast_temp_heatwave_threshold }}
+      {% else %}
+        {{ false }}
+      {% endif %}
+    {% else %}
+      {{ false }}
+    {% endif %}
+
+  # Determine if ANY window in the list is open
+  is_any_window_open: >
+    {% set window_sensors = window_sensor_entities %}
+    {% if window_sensors is iterable and window_sensors is not string and window_sensors | length > 0 %}
+      {{ window_sensors | select('is_state', 'on') | list | length > 0 }}
+    {% else %}
+      {{ false }}
+    {% endif %}
 
 trigger:
   - platform: state
@@ -152,7 +270,7 @@ trigger:
   - platform: state
     entity_id: !input outdoor_temperature_sensor
     id: outdoor_temp_change
-    enabled: "{{ outdoor_temperature_sensor != '' }}"
+    enabled: "{{ outdoor_temp_sensor != '' }}"
   - platform: state
     entity_id: !input weather_forecast_entity
     attribute: temperature
@@ -160,60 +278,15 @@ trigger:
     enabled: "{{ weather_forecast_entity != '' }}"
   - platform: state
     entity_id: !input window_sensor_entities
-    id: window_sensors_change
+    id: window_sensor_change
     enabled: "{{ window_sensor_entities | length > 0 }}"
 
 condition:
   - condition: template
     value_template: >
-      {{ states(this.entity_id) not in ['unavailable', 'unknown'] }}
+      {{ states(room_temp_sensor) not in ['unavailable', 'unknown'] }}
 
 action:
-  - variables:
-      room_temp_input_entity: !input temperature_sensor
-      threshold_start: !input threshold_temp_start_fan
-      threshold_stop: !input threshold_temp_stop_fan
-      threshold_ac_high: !input threshold_temp_ac_high
-      outdoor_temp_max: !input outdoor_temp_max_for_vent
-      threshold_ac_heatwave_indoor: !input threshold_temp_ac_heatwave
-
-      current_room_temp: "{{ states(room_temp_input_entity) | float(0) }}"
-      current_outdoor_temp: >
-        {% if outdoor_temperature_sensor != '' %}
-          {{ states(outdoor_temperature_sensor) | float(999) }}
-        {% else %}
-          {{ outdoor_temp_max }}
-        {% endif %}
-
-      is_heatwave: >
-        {% set weather_entity = weather_forecast_entity %}
-        {% set forecast_threshold = forecast_temp_heatwave_threshold %}
-        {% if weather_entity != '' and forecast_threshold is not none %}
-          {% set forecast = state_attr(weather_entity, 'forecast') %}
-          {% if forecast is not none and forecast | length > 0 %}
-            {% set today_max_temp = forecast[0].temperature | float(0) %}
-            {{ today_max_temp >= forecast_threshold }}
-          {% else %}
-            {{ false }}
-          {% endif %}
-        {% else %}
-          {{ false }}
-        {% endif %}
-
-      is_any_window_open: >
-        {% set window_sensors = window_sensor_entities %}
-        {% if window_sensors | length > 0 %}
-          {% set ns = namespace(any_open=false) %}
-          {% for sensor in window_sensors %}
-            {% if is_state(sensor, 'on') %}
-              {% set ns.any_open = true %}
-            {% endif %}
-          {% endfor %}
-          {{ ns.any_open }}
-        {% else %}
-          {{ false }}
-        {% endif %}
-
   # --- Logic for On/Off Fans ---
   - if:
       - condition: template
@@ -222,18 +295,26 @@ action:
       - choose:
           - conditions:
               - condition: template
-                value_template: "{{ current_room_temp >= threshold_start and current_outdoor_temp <= outdoor_temp_max }}"
+                value_template: "{{ current_room_temp >= fan_start_threshold and current_outdoor_temp <= outdoor_max_temp_for_vent }}"
             sequence:
-              - service: switch.turn_on
-                target:
-                  entity_id: "{{ fan_on_off_entity }}"
+              - if: # Idempotence to turn on
+                  - condition: template
+                    value_template: "{{ is_state(fan_on_off_entity, 'off') }}"
+                then:
+                  - service: switch.turn_on
+                    target:
+                      entity_id: "{{ fan_on_off_entity }}"
           - conditions:
               - condition: template
-                value_template: "{{ current_room_temp < threshold_stop }}"
+                value_template: "{{ current_room_temp < fan_stop_threshold or current_outdoor_temp > outdoor_max_temp_for_vent }}"
             sequence:
-              - service: switch.turn_off
-                target:
-                  entity_id: "{{ fan_on_off_entity }}"
+              - if: # Idempotence to turn off
+                  - condition: template
+                    value_template: "{{ is_state(fan_on_off_entity, 'on') }}"
+                then:
+                  - service: switch.turn_off
+                    target:
+                      entity_id: "{{ fan_on_off_entity }}"
 
   # --- Logic for Ceiling Fans ---
   - if:
@@ -241,291 +322,486 @@ action:
         value_template: "{{ ceiling_fan_entity != '' and states(ceiling_fan_entity) not in ['unavailable', 'unknown'] }}"
     then:
       - choose:
+          # Condition for turning on / 100% speed
           - conditions:
               - condition: template
-                value_template: "{{ current_room_temp > (threshold_ac_high + 4) }}"
+                value_template: >
+                  {{ current_room_temp > (ac_cool_high_threshold - ac_cool_highest_offset) and
+                     current_outdoor_temp <= outdoor_max_temp_for_vent }}
             sequence:
               - choose:
-                  - conditions:
-                      - condition: template
-                        value_template: "{{ state_attr(ceiling_fan_entity, 'supported_features') | bitwise_and(1) }}"
+                  - conditions: "{{ state_attr(ceiling_fan_entity, 'supported_features') | bitwise_and(1) }}"
                     sequence:
-                      - service: fan.set_percentage
+                      - if: # Idempotence
+                          - condition: template
+                            value_template: "{{ state_attr(ceiling_fan_entity, 'percentage') | float(0) != 100 }}"
+                        then:
+                          - service: fan.set_percentage
+                            target:
+                              entity_id: "{{ ceiling_fan_entity }}"
+                            data:
+                              percentage: 100
+                default:
+                  - if: # Idempotence
+                      - condition: template
+                        value_template: "{{ state_attr(ceiling_fan_entity, 'brightness_pct') | float(0) != 100 }}"
+                    then:
+                      - service: light.turn_on
                         target:
                           entity_id: "{{ ceiling_fan_entity }}"
                         data:
-                          percentage: 100
-                default:
-                  - service: light.turn_on
-                    target:
-                      entity_id: "{{ ceiling_fan_entity }}"
-                    data:
-                      brightness_pct: 100
-          - conditions:
-              - condition: template
-                value_template: "{{ current_room_temp > threshold_ac_high }}"
-            sequence:
-              - choose:
-                  - conditions:
-                      - condition: template
-                        value_template: "{{ state_attr(ceiling_fan_entity, 'supported_features') | bitwise_and(1) }}"
-                    sequence:
-                      - service: fan.set_percentage
-                        target:
-                          entity_id: "{{ ceiling_fan_entity }}"
-                        data:
-                          percentage: 75
-                default:
-                  - service: light.turn_on
-                    target:
-                      entity_id: "{{ ceiling_fan_entity }}"
-                    data:
-                      brightness_pct: 75
-          - conditions:
-              - condition: template
-                value_template: "{{ current_room_temp > (threshold_ac_high - 4) }}"
-            sequence:
-              - choose:
-                  - conditions:
-                      - condition: template
-                        value_template: "{{ state_attr(ceiling_fan_entity, 'supported_features') | bitwise_and(1) }}"
-                    sequence:
-                      - service: fan.set_percentage
-                        target:
-                          entity_id: "{{ ceiling_fan_entity }}"
-                        data:
-                          percentage: 50
-                default:
-                  - service: light.turn_on
-                    target:
-                      entity_id: "{{ ceiling_fan_entity }}"
-                    data:
-                      brightness_pct: 50
-          - conditions:
-              - condition: template
-                value_template: "{{ current_room_temp > (threshold_ac_high - 7) }}"
-            sequence:
-              - choose:
-                  - conditions:
-                      - condition: template
-                        value_template: "{{ state_attr(ceiling_fan_entity, 'supported_features') | bitwise_and(1) }}"
-                    sequence:
-                      - service: fan.set_percentage
-                        target:
-                          entity_id: "{{ ceiling_fan_entity }}"
-                        data:
-                          percentage: 25
-                default:
-                  - service: light.turn_on
-                    target:
-                      entity_id: "{{ ceiling_fan_entity }}"
-                    data:
-                      brightness_pct: 25
-          - conditions:
-              - condition: template
-                value_template: "{{ current_room_temp < threshold_stop }}"
-            sequence:
-              - choose:
-                  - conditions:
-                      - condition: template
-                        value_template: "{{ state_attr(ceiling_fan_entity, 'domain') == 'fan' }}"
-                    sequence:
-                      - service: fan.turn_off
-                        target:
-                          entity_id: "{{ ceiling_fan_entity }}"
-                default:
-                  - service: light.turn_off
-                    target:
-                      entity_id: "{{ ceiling_fan_entity }}"
+                          brightness_pct: 100
 
-  # --- Logic for Portable AC 1 ---
+          # Condition for turning on / 75% speed
+          - conditions:
+              - condition: template
+                value_template: >
+                  {{ current_room_temp > (ac_cool_high_threshold - ac_cool_high_offset) and
+                     current_outdoor_temp <= outdoor_max_temp_for_vent }}
+            sequence:
+              - choose:
+                  - conditions: "{{ state_attr(ceiling_fan_entity, 'supported_features') | bitwise_and(1) }}"
+                    sequence:
+                      - if: # Idempotence
+                          - condition: template
+                            value_template: "{{ state_attr(ceiling_fan_entity, 'percentage') | float(0) != 75 }}"
+                        then:
+                          - service: fan.set_percentage
+                            target:
+                              entity_id: "{{ ceiling_fan_entity }}"
+                            data:
+                              percentage: 75
+                default:
+                  - if: # Idempotence
+                      - condition: template
+                        value_template: "{{ state_attr(ceiling_fan_entity, 'brightness_pct') | float(0) != 75 }}"
+                    then:
+                      - service: light.turn_on
+                        target:
+                          entity_id: "{{ ceiling_fan_entity }}"
+                        data:
+                          brightness_pct: 75
+          
+          # Condition for turning on / 50% speed
+          - conditions:
+              - condition: template
+                value_template: >
+                  {{ current_room_temp > (ac_cool_high_threshold - ac_cool_medium_offset) and
+                     current_outdoor_temp <= outdoor_max_temp_for_vent }}
+            sequence:
+              - choose:
+                  - conditions: "{{ state_attr(ceiling_fan_entity, 'supported_features') | bitwise_and(1) }}"
+                    sequence:
+                      - if: # Idempotence
+                          - condition: template
+                            value_template: "{{ state_attr(ceiling_fan_entity, 'percentage') | float(0) != 50 }}"
+                        then:
+                          - service: fan.set_percentage
+                            target:
+                              entity_id: "{{ ceiling_fan_entity }}"
+                            data:
+                              percentage: 50
+                default:
+                  - if: # Idempotence
+                      - condition: template
+                        value_template: "{{ state_attr(ceiling_fan_entity, 'brightness_pct') | float(0) != 50 }}"
+                    then:
+                      - service: light.turn_on
+                        target:
+                          entity_id: "{{ ceiling_fan_entity }}"
+                        data:
+                          brightness_pct: 50
+          
+          # Condition for turning on / 25% speed
+          - conditions:
+              - condition: template
+                value_template: >
+                  {{ current_room_temp > (ac_cool_high_threshold - ac_cool_low_offset) and
+                     current_outdoor_temp <= outdoor_max_temp_for_vent }}
+            sequence:
+              - choose:
+                  - conditions: "{{ state_attr(ceiling_fan_entity, 'supported_features') | bitwise_and(1) }}"
+                    sequence:
+                      - if: # Idempotence
+                          - condition: template
+                            value_template: "{{ state_attr(ceiling_fan_entity, 'percentage') | float(0) != 25 }}"
+                        then:
+                          - service: fan.set_percentage
+                            target:
+                              entity_id: "{{ ceiling_fan_entity }}"
+                            data:
+                              percentage: 25
+                default:
+                  - if: # Idempotence
+                      - condition: template
+                        value_template: "{{ state_attr(ceiling_fan_entity, 'brightness_pct') | float(0) != 25 }}"
+                    then:
+                      - service: light.turn_on
+                        target:
+                          entity_id: "{{ ceiling_fan_entity }}"
+                        data:
+                          brightness_pct: 25
+
+          # Condition for turning off
+          - conditions:
+              - condition: template
+                value_template: "{{ current_room_temp < fan_stop_threshold or current_outdoor_temp > outdoor_max_temp_for_vent }}"
+            sequence:
+              - choose:
+                  - conditions: "{{ state_attr(ceiling_fan_entity, 'domain') == 'fan' }}"
+                    sequence:
+                      - if: # Idempotence
+                          - condition: template
+                            value_template: "{{ is_state(ceiling_fan_entity, 'on') }}"
+                        then:
+                          - service: fan.turn_off
+                            target:
+                              entity_id: "{{ ceiling_fan_entity }}"
+                default:
+                  - if: # Idempotence
+                      - condition: template
+                        value_template: "{{ is_state(ceiling_fan_entity, 'on') }}"
+                    then:
+                      - service: light.turn_off
+                        target:
+                          entity_id: "{{ ceiling_fan_entity }}"
+
+  # --- Logic for Portable AC 1 (Many Modes) ---
   - if:
       - condition: template
         value_template: "{{ portable_ac_1_entity != '' and states(portable_ac_1_entity) not in ['unavailable', 'unknown'] }}"
     then:
-      - choose:
-          - conditions:
+      # If option is enabled AND a window is open, turn off AC and do nothing else.
+      - if: 
+          - condition: template
+            value_template: "{{ turn_off_ac_on_window_open and is_any_window_open }}"
+        then:
+          - if: # Idempotence condition to turn off AC
               - condition: template
-                value_template: "{{ turn_off_ac_on_window_open and is_any_window_open }}"
-            sequence:
+                value_template: "{{ states(portable_ac_1_entity) != 'off' }}"
+            then:
               - service: climate.turn_off
                 target:
                   entity_id: "{{ portable_ac_1_entity }}"
-          - conditions:
-              - condition: template
-                value_template: "{{ not is_any_window_open }}"
-            sequence:
-              - choose:
-                  - conditions:
+        else: # If NO window is open OR the option is disabled, proceed with normal control logic.
+          - choose:
+              # "Heatwave" condition: Activates cool mode if indoor temperature is above threshold
+              - conditions:
+                  - condition: template
+                    value_template: "{{ is_heatwave and current_room_temp > ac_heatwave_start_threshold }}"
+                sequence:
+                  - if: # Idempotence for hvac_mode
                       - condition: template
-                        value_template: "{{ is_heatwave and current_room_temp > threshold_ac_heatwave_indoor }}"
-                    sequence:
+                        value_template: "{{ states(portable_ac_1_entity) != 'cool' }}"
+                    then:
                       - service: climate.set_hvac_mode
                         target:
                           entity_id: "{{ portable_ac_1_entity }}"
                         data:
                           hvac_mode: 'cool'
+                  - if: # Idempotence for fan_mode
+                      - condition: template
+                        value_template: "{{ state_attr(portable_ac_1_entity, 'fan_mode') != 'medium' }}"
+                    then:
                       - service: climate.set_fan_mode
                         target:
                           entity_id: "{{ portable_ac_1_entity }}"
                         data:
                           fan_mode: 'medium'
-                  - conditions:
+
+              # Conditions to ACTIVATE 'cool' mode or ADJUST speed if already in cool
+              - conditions:
+                  - condition: template
+                    value_template: "{{ current_room_temp > (ac_cool_high_threshold - ac_cool_highest_offset) }}"
+                sequence:
+                  - if: # Idempotence for hvac_mode
                       - condition: template
-                        value_template: "{{ current_room_temp > (threshold_ac_high + 4) }}"
-                    sequence:
+                        value_template: "{{ states(portable_ac_1_entity) != 'cool' }}"
+                    then:
                       - service: climate.set_hvac_mode
                         target:
                           entity_id: "{{ portable_ac_1_entity }}"
                         data:
                           hvac_mode: 'cool'
+                  - if: # Idempotence for fan_mode
+                      - condition: template
+                        value_template: "{{ state_attr(portable_ac_1_entity, 'fan_mode') != 'full' }}"
+                    then:
                       - service: climate.set_fan_mode
                         target:
                           entity_id: "{{ portable_ac_1_entity }}"
                         data:
-                          fan_mode: 'Full'
-                  - conditions:
+                          fan_mode: 'full'
+
+              - conditions:
+                  - condition: template
+                    value_template: "{{ current_room_temp > (ac_cool_high_threshold - ac_cool_high_offset) }}"
+                sequence:
+                  - if: # Idempotence for hvac_mode
                       - condition: template
-                        value_template: "{{ current_room_temp > threshold_ac_high }}"
-                    sequence:
+                        value_template: "{{ states(portable_ac_1_entity) != 'cool' }}"
+                    then:
                       - service: climate.set_hvac_mode
                         target:
                           entity_id: "{{ portable_ac_1_entity }}"
                         data:
                           hvac_mode: 'cool'
+                  - if: # Idempotence for fan_mode
+                      - condition: template
+                        value_template: "{{ state_attr(portable_ac_1_entity, 'fan_mode') != 'high' }}"
+                    then:
                       - service: climate.set_fan_mode
                         target:
                           entity_id: "{{ portable_ac_1_entity }}"
                         data:
                           fan_mode: 'high'
-                  - conditions:
+
+              - conditions:
+                  - condition: template
+                    value_template: "{{ current_room_temp > (ac_cool_high_threshold - ac_cool_medium_offset) }}"
+                sequence:
+                  - if: # Idempotence for hvac_mode
                       - condition: template
-                        value_template: "{{ current_room_temp > (threshold_ac_high - 2) }}"
-                    sequence:
+                        value_template: "{{ states(portable_ac_1_entity) != 'cool' }}"
+                    then:
                       - service: climate.set_hvac_mode
                         target:
                           entity_id: "{{ portable_ac_1_entity }}"
                         data:
                           hvac_mode: 'cool'
+                  - if: # Idempotence for fan_mode
+                      - condition: template
+                        value_template: "{{ state_attr(portable_ac_1_entity, 'fan_mode') != 'medium' }}"
+                    then:
                       - service: climate.set_fan_mode
                         target:
                           entity_id: "{{ portable_ac_1_entity }}"
                         data:
                           fan_mode: 'medium'
-                  - conditions:
+
+              - conditions:
+                  - condition: template
+                    value_template: "{{ current_room_temp > (ac_cool_high_threshold - ac_cool_low_offset) }}"
+                sequence:
+                  - if: # Idempotence for hvac_mode
                       - condition: template
-                        value_template: "{{ current_room_temp > (threshold_ac_high - 4) }}"
-                    sequence:
+                        value_template: "{{ states(portable_ac_1_entity) != 'cool' }}"
+                    then:
                       - service: climate.set_hvac_mode
                         target:
                           entity_id: "{{ portable_ac_1_entity }}"
                         data:
                           hvac_mode: 'cool'
+                  - if: # Idempotence for fan_mode
+                      - condition: template
+                        value_template: "{{ state_attr(portable_ac_1_entity, 'fan_mode') != 'low' }}"
+                    then:
                       - service: climate.set_fan_mode
                         target:
                           entity_id: "{{ portable_ac_1_entity }}"
                         data:
                           fan_mode: 'low'
-                  - conditions:
+
+              # Switch to fan_only when temperature is low enough and AC was in 'cool' mode
+              - conditions:
+                  - condition: template
+                    value_template: "{{ states(portable_ac_1_entity) == 'cool' and current_room_temp <= ac_cool_stop_threshold }}"
+                sequence:
+                  - if: # Idempotence for hvac_mode
                       - condition: template
-                        value_template: "{{ current_room_temp <= (threshold_ac_high - 5) and current_room_temp > threshold_stop }}"
-                    sequence:
+                        value_template: "{{ states(portable_ac_1_entity) != 'fan_only' }}"
+                    then:
                       - service: climate.set_hvac_mode
                         target:
                           entity_id: "{{ portable_ac_1_entity }}"
                         data:
                           hvac_mode: 'fan_only'
+
+              # Switch to fan_only if temperature is above fan stop threshold, but not in cool mode, AND outdoor conditions are good
+              - conditions:
+                  - condition: template
+                    value_template: >
+                          {{ current_room_temp > fan_stop_threshold and
+                             states(portable_ac_1_entity) != 'cool' and
+                             current_outdoor_temp <= outdoor_max_temp_for_vent }}
+                sequence:
+                  - if: # Idempotence for hvac_mode
+                      - condition: template
+                        value_template: "{{ states(portable_ac_1_entity) != 'fan_only' }}"
+                    then:
+                      - service: climate.set_hvac_mode
+                        target:
+                          entity_id: "{{ portable_ac_1_entity }}"
+                        data:
+                          hvac_mode: 'fan_only'
+                  - if: # Idempotence for fan_mode
+                      - condition: template
+                        value_template: "{{ state_attr(portable_ac_1_entity, 'fan_mode') != 'Auto' }}"
+                    then:
                       - service: climate.set_fan_mode
                         target:
                           entity_id: "{{ portable_ac_1_entity }}"
                         data:
                           fan_mode: 'Auto'
-                  - conditions:
+
+              # Turn off if temperature is low (unless a heatwave is forecasted and AC should pre-cool)
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ current_room_temp < fan_stop_threshold and
+                         not (is_heatwave and current_room_temp > ac_heatwave_start_threshold) }}
+                sequence:
+                  - if: # Idempotence to turn off
                       - condition: template
-                        value_template: "{{ current_room_temp < threshold_stop }}"
-                    sequence:
+                        value_template: "{{ states(portable_ac_1_entity) != 'off' }}"
+                    then:
                       - service: climate.turn_off
                         target:
                           entity_id: "{{ portable_ac_1_entity }}"
 
-  # --- Logic for Portable AC 2 ---
+  # --- Logic for Portable AC 2 (Limited Modes) ---
   - if:
       - condition: template
         value_template: "{{ portable_ac_2_entity != '' and states(portable_ac_2_entity) not in ['unavailable', 'unknown'] }}"
     then:
-      - choose:
-          - conditions:
+      # If option is enabled AND a window is open, turn off AC and do nothing else.
+      - if: 
+          - condition: template
+            value_template: "{{ turn_off_ac_on_window_open and is_any_window_open }}"
+        then:
+          - if: # Idempotence condition to turn off AC
               - condition: template
-                value_template: "{{ turn_off_ac_on_window_open and is_any_window_open }}"
-            sequence:
+                value_template: "{{ states(portable_ac_2_entity) != 'off' }}"
+            then:
               - service: climate.turn_off
                 target:
                   entity_id: "{{ portable_ac_2_entity }}"
-          - conditions:
-              - condition: template
-                value_template: "{{ not is_any_window_open }}"
-            sequence:
-              - choose:
-                  - conditions:
+        else: # If NO window is open OR the option is disabled, proceed with normal control logic.
+          - choose:
+              # "Heatwave" condition
+              - conditions:
+                  - condition: template
+                    value_template: "{{ is_heatwave and current_room_temp > ac_heatwave_start_threshold }}"
+                sequence:
+                  - if: # Idempotence for hvac_mode
                       - condition: template
-                        value_template: "{{ is_heatwave and current_room_temp > threshold_ac_heatwave_indoor }}"
-                    sequence:
+                        value_template: "{{ states(portable_ac_2_entity) != 'cool' }}"
+                    then:
                       - service: climate.set_hvac_mode
                         target:
                           entity_id: "{{ portable_ac_2_entity }}"
                         data:
                           hvac_mode: 'cool'
+                  - if: # Idempotence for fan_mode
+                      - condition: template
+                        value_template: "{{ state_attr(portable_ac_2_entity, 'fan_mode') != 'medium' }}"
+                    then:
                       - service: climate.set_fan_mode
                         target:
                           entity_id: "{{ portable_ac_2_entity }}"
                         data:
                           fan_mode: 'medium'
-                  - conditions:
+
+              # Conditions to ACTIVATE 'cool' mode or ADJUST speed if already in cool
+              - conditions:
+                  - condition: template
+                    value_template: "{{ current_room_temp > (ac_cool_high_threshold - ac_cool_high_offset) }}"
+                sequence:
+                  - if: # Idempotence for hvac_mode
                       - condition: template
-                        value_template: "{{ current_room_temp > threshold_ac_high }}"
-                    sequence:
+                        value_template: "{{ states(portable_ac_2_entity) != 'cool' }}"
+                    then:
                       - service: climate.set_hvac_mode
                         target:
                           entity_id: "{{ portable_ac_2_entity }}"
                         data:
                           hvac_mode: 'cool'
+                  - if: # Idempotence for fan_mode
+                      - condition: template
+                        value_template: "{{ state_attr(portable_ac_2_entity, 'fan_mode') != 'high' }}"
+                    then:
                       - service: climate.set_fan_mode
                         target:
                           entity_id: "{{ portable_ac_2_entity }}"
                         data:
                           fan_mode: 'high'
-                  - conditions:
+
+              - conditions:
+                  - condition: template
+                    value_template: "{{ current_room_temp > (ac_cool_high_threshold - ac_cool_medium_offset) }}"
+                sequence:
+                  - if: # Idempotence for hvac_mode
                       - condition: template
-                        value_template: "{{ current_room_temp > (threshold_ac_high - 4) }}"
-                    sequence:
+                        value_template: "{{ states(portable_ac_2_entity) != 'cool' }}"
+                    then:
                       - service: climate.set_hvac_mode
                         target:
                           entity_id: "{{ portable_ac_2_entity }}"
                         data:
                           hvac_mode: 'cool'
+                  - if: # Idempotence for fan_mode
+                      - condition: template
+                        value_template: "{{ state_attr(portable_ac_2_entity, 'fan_mode') != 'medium' }}"
+                    then:
                       - service: climate.set_fan_mode
                         target:
                           entity_id: "{{ portable_ac_2_entity }}"
                         data:
                           fan_mode: 'medium'
-                  - conditions:
+
+              # Switch to fan_only when temperature is low enough and AC was in 'cool' mode
+              - conditions:
+                  - condition: template
+                    value_template: "{{ states(portable_ac_2_entity) == 'cool' and current_room_temp <= ac_cool_stop_threshold }}"
+                sequence:
+                  - if: # Idempotence for hvac_mode
                       - condition: template
-                        value_template: "{{ current_room_temp <= (threshold_ac_high - 5) and current_room_temp > threshold_stop }}"
-                    sequence:
+                        value_template: "{{ states(portable_ac_2_entity) != 'fan_only' }}"
+                    then:
                       - service: climate.set_hvac_mode
                         target:
                           entity_id: "{{ portable_ac_2_entity }}"
                         data:
                           hvac_mode: 'fan_only'
+
+              # Switch to fan_only if temperature is above fan stop threshold, but not in cool mode, AND outdoor conditions are good
+              - conditions:
+                  - condition: template
+                    value_template: >
+                          {{ current_room_temp > fan_stop_threshold and
+                             states(portable_ac_2_entity) != 'cool' and
+                             current_outdoor_temp <= outdoor_max_temp_for_vent }}
+                sequence:
+                  - if: # Idempotence for hvac_mode
+                      - condition: template
+                        value_template: "{{ states(portable_ac_2_entity) != 'fan_only' }}"
+                    then:
+                      - service: climate.set_hvac_mode
+                        target:
+                          entity_id: "{{ portable_ac_2_entity }}"
+                        data:
+                          hvac_mode: 'fan_only'
+                  - if: # Idempotence for fan_mode
+                      - condition: template
+                        value_template: "{{ state_attr(portable_ac_2_entity, 'fan_mode') != 'Auto' }}"
+                    then:
                       - service: climate.set_fan_mode
                         target:
                           entity_id: "{{ portable_ac_2_entity }}"
                         data:
                           fan_mode: 'Auto'
-                  - conditions:
+
+              # Turn off if temperature is low
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ current_room_temp < fan_stop_threshold and
+                         not (is_heatwave and current_room_temp > ac_heatwave_start_threshold) }}
+                sequence:
+                  - if: # Idempotence to turn off
                       - condition: template
-                        value_template: "{{ current_room_temp < threshold_stop }}"
-                    sequence:
+                        value_template: "{{ states(portable_ac_2_entity) != 'off' }}"
+                    then:
                       - service: climate.turn_off
                         target:
                           entity_id: "{{ portable_ac_2_entity }}"
