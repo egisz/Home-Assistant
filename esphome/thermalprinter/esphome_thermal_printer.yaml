@@ -8,25 +8,25 @@ esp32:
     type: arduino
 
 wifi:
-  ssid: "myssid"
-  password: "myssidpassword"
-
+  ssid: "myssid" #change me
+  password: "myssidpassword" #change me
+ 
   manual_ip:
-    static_ip: 10.0.0.163
-    gateway: 10.0.0.1
+    static_ip: 0.0.0.0 #change me
+    gateway: 0.0.0.0 #change me
     subnet: 255.255.255.0
 
   # Fallback Access Point
   ap:
-    ssid: "Esp-Thermal-Printer"
-    password: "myfallbackpassword"
+    ssid: "Esp-Thermal-Printer" #change me
+    password: "myfallbackpassword" #change me
 
 captive_portal:
 
 # API for Home Assistant and custom actions
 api:
   encryption:
-    key: "myencryptionkey"
+    key: "myencryptionkey" #change me
 
   actions:
     # Action to print simple text
@@ -803,7 +803,7 @@ api:
 
 ota:
   - platform: esphome
-    password: "myotapassword"
+    password: "myotapassword" #change me
 
 logger:
   level: DEBUG
