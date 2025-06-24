@@ -1,1 +1,1 @@
-test
+Esp32 Esphome TTL Thermal Printer 
