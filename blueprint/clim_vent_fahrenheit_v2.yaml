@@ -391,7 +391,7 @@ action:
                         target:
                           entity_id: "{{ portable_ac_1_entity }}"
                         data:
-                          fan_mode: 'Full'
+                          fan_mode: 'full'
                   - conditions:
                       - condition: template
                         value_template: "{{ current_room_temp > threshold_ac_high }}"
@@ -447,7 +447,7 @@ action:
                         target:
                           entity_id: "{{ portable_ac_1_entity }}"
                         data:
-                          fan_mode: 'Auto'
+                          fan_mode: 'auto'
                   - conditions:
                       - condition: template
                         value_template: "{{ current_room_temp < threshold_stop }}"
@@ -529,7 +529,7 @@ action:
                         target:
                           entity_id: "{{ portable_ac_2_entity }}"
                         data:
-                          fan_mode: 'Auto'
+                          fan_mode: 'auto'
                   - conditions:
                       - condition: template
                         value_template: "{{ current_room_temp < threshold_stop }}"
