@@ -642,7 +642,7 @@ action:
                         target:
                           entity_id: "{{ portable_ac_1_entity }}"
                         data:
-                          fan_mode: 'Auto'
+                          fan_mode: 'auto'
 
               # Turn off if temperature is low (unless a heatwave is forecasted and AC should pre-cool)
               - conditions:
@@ -789,7 +789,7 @@ action:
                         target:
                           entity_id: "{{ portable_ac_2_entity }}"
                         data:
-                          fan_mode: 'Auto'
+                          fan_mode: 'auto'
 
               # Turn off if temperature is low
               - conditions:
