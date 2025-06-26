@@ -248,14 +248,8 @@ action:
         {% endif %}
 
       is_home: >
-        {% if enable_presence_control and presence_entity | length > 0 %}
-          {% set ns = namespace(any_home=false) %}
-          {% for entity_id in presence_entity %}
-            {% if is_state(entity_id, 'home') %}
-              {% set ns.any_home = true %}
-            {% endif %}
-          {% endfor %}
-          {{ ns.any_home }}
+        {% if enable_presence_control and presence_entity != '' %}
+          {{ is_state(presence_entity, 'home') }}
         {% else %}
           {{ true }}
         {% endif %}
