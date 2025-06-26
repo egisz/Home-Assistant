@@ -1,0 +1,877 @@
+blueprint:
+  name: Advanced Ventilation/AC Management with Schedule (Celsius) Timer Shedule Presence Add Beta
+  description: Intelligent control of fans and air conditioners based on indoor temperature, outdoor conditions, forecasted heatwave, window/door status, with optional schedule and timer controls.
+  domain: automation
+  input:
+    temperature_sensor:
+      name: Room Temperature Sensor
+      selector:
+        entity:
+          domain: sensor
+          device_class: temperature
+    fan_on_off_entity:
+      name: On/Off Fan (Optional)
+      description: Switch entity for a simple ON/OFF fan.
+      selector:
+        entity:
+          domain: switch
+      default: ""
+    ceiling_fan_entity:
+      name: Ceiling Fan (Optional)
+      description: Fan entity or dimmable light entity for a ceiling fan.
+      selector:
+        entity:
+          domain: fan
+      default: ""
+    portable_ac_1_entity:
+      name: Portable AC 1 (Optional - Many Modes)
+      description: Climate entity for an AC with various fan modes (silent, low, medium, high, full, Auto).
+      selector:
+        entity:
+          domain: climate
+      default: ""
+    portable_ac_2_entity:
+      name: Portable AC 2 (Optional - Limited Modes)
+      description: Climate entity for an AC with limited fan modes (auto, low, medium, high).
+      selector:
+        entity:
+          domain: climate
+      default: ""
+    portable_ac_3_entity:
+      name: Portable AC 3 (Optional - Numbered Levels)
+      description: Climate entity for an AC with numbered fan modes (auto, 1, 2, 3, 4, 5).
+      selector:
+        entity:
+          domain: climate
+      default: ""
+    threshold_temp_start_fan:
+      name: Fan Start Threshold (Indoor)
+      description: Indoor temperature at which fans activate.
+      selector:
+        number:
+          min: 15
+          max: 30
+          step: 0.5
+          unit_of_measurement: "°C"
+      default: 24.0
+    threshold_temp_stop_fan:
+      name: Fan Stop Threshold (Indoor)
+      description: Indoor temperature at which fans turn off.
+      selector:
+        number:
+          min: 15
+          max: 30
+          step: 0.5
+          unit_of_measurement: "°C"
+      default: 22.0
+    threshold_temp_ac_high:
+      name: AC High Temperature Threshold
+      description: Indoor temperature to activate air conditioners in high mode.
+      selector:
+        number:
+          min: 20
+          max: 35
+          step: 0.5
+          unit_of_measurement: "°C"
+      default: 26.0
+    threshold_temp_ac_heatwave:
+      name: AC Heatwave Threshold (Indoor)
+      description: Indoor temperature to activate AC when a forecasted heatwave is detected. Should be lower than the normal threshold.
+      selector:
+        number:
+          min: 18
+          max: 25
+          step: 0.5
+          unit_of_measurement: "°C"
+      default: 22.0
+    outdoor_temperature_sensor:
+      name: Outdoor Temperature Sensor (Optional)
+      description: Outdoor temperature sensor for condition checks (actual outdoor temp).
+      selector:
+        entity:
+          domain: sensor
+          device_class: temperature
+      default: ""
+    outdoor_temp_max_for_vent:
+      name: Max Outdoor Temp for Ventilation (Optional)
+      description: Maximum outdoor temperature to allow ventilation (to avoid bringing in hot air).
+      selector:
+        number:
+          min: 10
+          max: 30
+          step: 0.5
+          unit_of_measurement: "°C"
+      default: 25.0
+    weather_forecast_entity:
+      name: Weather Forecast Entity (Optional - for Heatwave Alert)
+      description: Select your weather entity (e.g., weather.your_location) to get daily temperature forecasts.
+      selector:
+        entity:
+          domain: weather
+      default: ""
+    forecast_temp_heatwave_threshold:
+      name: Forecasted Temp Heatwave Threshold (Outdoor)
+      description: Daily forecasted temperature (from weather entity) above which a heatwave is considered "announced".
+      selector:
+        number:
+          min: 25
+          max: 40
+          step: 0.5
+          unit_of_measurement: "°C"
+      default: 30.0
+    window_sensor_entities:
+      name: Window/Door Sensors (Optional - for AC only)
+      description: Multiple binary sensors for windows or doors. AC will be impacted if any are open.
+      selector:
+        entity:
+          domain: binary_sensor
+          device_class:
+            - opening
+            - window
+            - door
+          multiple: true
+      default: []
+    turn_off_ac_on_window_open:
+      name: Turn Off AC If Any Window/Door Open?
+      description: If enabled, the AC will turn OFF immediately if any linked window/door sensor is open. If disabled, the AC will simply not start cooling if any window/door is open, but will remain ON if already running (e.g., in fan-only mode).
+      selector:
+        boolean:
+      default: true
+
+    # --- TIME AND TIMER OPTIONS ---
+    enable_schedule:
+      name: Enable Schedule Control
+      description: Enable time-based schedule control (start/stop times)
+      selector:
+        boolean:
+      default: false
+    schedule_start_time:
+      name: Schedule Start Time
+      description: Time when HVAC control should start (only if schedule enabled)
+      selector:
+        time:
+      default: "08:00:00"
+    schedule_stop_time:
+      name: Schedule Stop Time
+      description: Time when HVAC control should stop - all devices will turn off (only if schedule enabled)
+      selector:
+        time:
+      default: "22:00:00"
+
+    enable_timer:
+      name: Enable Timer Control
+      description: Enable timer-based control with input_boolean helpers
+      selector:
+        boolean:
+      default: false
+    timer_control_entity:
+      name: Timer Control Entity (Optional)
+      description: Input_boolean entity to control the timer (ON = active, OFF = inactive/shutdown)
+      selector:
+        entity:
+          domain: input_boolean
+      default: ""
+
+    enable_master_switch:
+      name: Enable Master Switch
+      description: Enable a master switch to completely disable/enable the automation
+      selector:
+        boolean:
+      default: false
+    master_switch_entity:
+      name: Master Switch Entity (Optional)
+      description: Input_boolean entity to act as master switch (ON = automation active, OFF = automation disabled)
+      selector:
+        entity:
+          domain: input_boolean
+      default: ""
+
+    # --- PRESENCE DETECTION OPTION ---
+    enable_presence_control:
+      name: Enable Presence Control
+      description: Enable presence-based control (automation pauses when no one is home).
+      selector:
+        boolean:
+      default: false
+    presence_entity:
+      name: Presence Entity (Optional)
+      description: Entity (e.g., device_tracker group) that indicates if anyone is home (on = home, off = away).
+      selector:
+        entity:
+          domain: device_tracker #group can also be a group
+          multiple: true
+      default: ""
+
+mode: queued
+
+variables:
+  fan_on_off_entity: !input fan_on_off_entity
+  ceiling_fan_entity: !input ceiling_fan_entity
+  portable_ac_1_entity: !input portable_ac_1_entity
+  portable_ac_2_entity: !input portable_ac_2_entity
+  portable_ac_3_entity: !input portable_ac_3_entity
+  outdoor_temperature_sensor: !input outdoor_temperature_sensor
+  threshold_temp_ac_heatwave: !input threshold_temp_ac_heatwave
+  weather_forecast_entity: !input weather_forecast_entity
+  forecast_temp_heatwave_threshold: !input forecast_temp_heatwave_threshold
+  window_sensor_entities: !input window_sensor_entities
+  turn_off_ac_on_window_open: !input turn_off_ac_on_window_open
+
+  # Variables for hourly timer features
+  enable_schedule: !input enable_schedule
+  schedule_start_time: !input schedule_start_time
+  schedule_stop_time: !input schedule_stop_time
+  enable_timer: !input enable_timer
+  timer_control_entity: !input timer_control_entity
+  enable_master_switch: !input enable_master_switch
+  master_switch_entity: !input master_switch_entity
+  # Variable for presence control
+  enable_presence_control: !input enable_presence_control
+  presence_entity: !input presence_entity
+
+trigger:
+  - platform: state
+    entity_id: !input temperature_sensor
+    id: indoor_temp_change
+  - platform: state
+    entity_id: !input outdoor_temperature_sensor
+    id: outdoor_temp_change
+    enabled: "{{ outdoor_temperature_sensor != '' }}"
+  - platform: state
+    entity_id: !input weather_forecast_entity
+    attribute: temperature
+    id: weather_forecast_change
+    enabled: "{{ weather_forecast_entity != '' }}"
+  - platform: state
+    entity_id: !input window_sensor_entities
+    id: window_sensors_change
+    enabled: "{{ window_sensor_entities | length > 0 }}"
+  # Triggers for schedule and timer
+  - platform: time
+    at: !input schedule_start_time
+    id: schedule_start
+    enabled: "{{ enable_schedule }}"
+  - platform: time
+    at: !input schedule_stop_time
+    id: schedule_stop
+    enabled: "{{ enable_schedule }}"
+  - platform: state
+    entity_id: !input timer_control_entity
+    id: timer_control_change
+    enabled: "{{ enable_timer and timer_control_entity != '' }}"
+  - platform: state
+    entity_id: !input master_switch_entity
+    id: master_switch_change
+    enabled: "{{ enable_master_switch and master_switch_entity != '' }}"
+  # Trigger for presence detection
+  - platform: state
+    entity_id: !input presence_entity
+    id: presence_change
+    enabled: "{{ enable_presence_control and presence_entity != '' }}"
+
+condition:
+  - condition: template
+    value_template: >
+      {{ states(this.entity_id) not in ['unavailable', 'unknown'] }}
+
+action:
+  - variables:
+      room_temp_input_entity: !input temperature_sensor
+      threshold_start: !input threshold_temp_start_fan
+      threshold_stop: !input threshold_temp_stop_fan
+      threshold_ac_high: !input threshold_temp_ac_high
+      outdoor_temp_max: !input outdoor_temp_max_for_vent
+      threshold_ac_heatwave_indoor: !input threshold_temp_ac_heatwave
+
+      current_room_temp: "{{ states(room_temp_input_entity) | float(0) }}"
+      current_outdoor_temp: >
+        {% if outdoor_temperature_sensor != '' %}
+          {{ states(outdoor_temperature_sensor) | float(999) }}
+        {% else %}
+          {{ outdoor_temp_max }}
+        {% endif %}
+
+      is_heatwave: >
+        {% set weather_entity = weather_forecast_entity %}
+        {% set forecast_threshold = forecast_temp_heatwave_threshold %}
+        {% if weather_entity != '' and forecast_threshold is not none %}
+          {% set forecast = state_attr(weather_entity, 'forecast') %}
+          {% if forecast is not none and forecast | length > 0 %}
+            {% set today_max_temp = forecast[0].temperature | float(0) %}
+            {{ today_max_temp >= forecast_threshold }}
+          {% else %}
+            {{ false }}
+          {% endif %}
+        {% else %}
+          {{ false }}
+        {% endif %}
+
+      is_any_window_open: >
+        {% set window_sensors = window_sensor_entities %}
+        {% if window_sensors | length > 0 %}
+          {% set ns = namespace(any_open=false) %}
+          {% for sensor in window_sensors %}
+            {% if is_state(sensor, 'on') %}
+              {% set ns.any_open = true %}
+            {% endif %}
+          {% endfor %}
+          {{ ns.any_open }}
+        {% else %}
+          {{ false }}
+        {% endif %}
+
+      # Control variables
+      is_within_schedule: >
+        {% if enable_schedule %}
+          {% set current_time = now().strftime('%H:%M:%S') %}
+          {% set start_time = schedule_start_time %}
+          {% set stop_time = schedule_stop_time %}
+          {% if start_time <= stop_time %}
+            {{ start_time <= current_time <= stop_time }}
+          {% else %}
+            {{ current_time >= start_time or current_time <= stop_time }}
+          {% endif %}
+        {% else %}
+          {{ true }}
+        {% endif %}
+
+      is_timer_active: >
+        {% if enable_timer and timer_control_entity != '' %}
+          {{ is_state(timer_control_entity, 'on') }}
+        {% else %}
+          {{ true }}
+        {% endif %}
+
+      is_master_switch_on: >
+        {% if enable_master_switch and master_switch_entity != '' %}
+          {{ is_state(master_switch_entity, 'on') }}
+        {% else %}
+          {{ true }}
+        {% endif %}
+
+      is_home: >
+        {% if enable_presence_control and presence_entity | length > 0 %}
+          {% set ns = namespace(any_home=false) %}
+          {% for entity_id in presence_entity %}
+            {% if is_state(entity_id, 'home') %}
+              {% set ns.any_home = true %}
+            {% endif %}
+          {% endfor %}
+          {{ ns.any_home }}
+        {% else %}
+          {{ true }}
+        {% endif %}
+
+      # Global variable to determine if automation should run
+      automation_should_run: >
+        {{ is_master_switch_on and is_within_schedule and is_timer_active and is_home }}
+
+  # Special check for shutdown triggers
+  - choose:
+      # If the trigger is a scheduled shutdown (schedule_stop, timer off, master switch off, or presence away)
+      - conditions:
+          - condition: or
+            conditions:
+              - condition: template
+                value_template: "{{ trigger.id == 'schedule_stop' }}"
+              - condition: and
+                conditions:
+                  - condition: template
+                    value_template: "{{ trigger.id == 'timer_control_change' }}"
+                  - condition: template
+                    value_template: "{{ not is_timer_active }}"
+              - condition: and
+                conditions:
+                  - condition: template
+                    value_template: "{{ trigger.id == 'master_switch_change' }}"
+                  - condition: template
+                    value_template: "{{ not is_master_switch_on }}"
+              - condition: and
+                conditions:
+                  - condition: template
+                    value_template: "{{ trigger.id == 'presence_change' }}"
+                  - condition: template
+                    value_template: "{{ not is_home }}" # If presence changes to not_home
+        sequence:
+          # Stop all devices
+          - parallel:
+              # Turn the fan on/off
+              - if:
+                  - condition: template
+                    value_template: "{{ fan_on_off_entity != '' }}"
+                then:
+                  - service: switch.turn_off
+                    target:
+                      entity_id: "{{ fan_on_off_entity }}"
+              # Turn off the ceiling fan
+              - if:
+                  - condition: template
+                    value_template: "{{ ceiling_fan_entity != '' }}"
+                then:
+                  - choose:
+                      - conditions:
+                          - condition: template
+                            value_template: "{{ state_attr(ceiling_fan_entity, 'domain') == 'fan' }}"
+                        sequence:
+                          - service: fan.turn_off
+                            target:
+                              entity_id: "{{ ceiling_fan_entity }}"
+                    default:
+                      - service: light.turn_off
+                        target:
+                          entity_id: "{{ ceiling_fan_entity }}"
+              # Turn off all air conditioners
+              - if:
+                  - condition: template
+                    value_template: "{{ portable_ac_1_entity != '' }}"
+                then:
+                  - service: climate.turn_off
+                    target:
+                      entity_id: "{{ portable_ac_1_entity }}"
+              - if:
+                  - condition: template
+                    value_template: "{{ portable_ac_2_entity != '' }}"
+                then:
+                  - service: climate.turn_off
+                    target:
+                      entity_id: "{{ portable_ac_2_entity }}"
+              - if:
+                  - condition: template
+                    value_template: "{{ portable_ac_3_entity != '' }}"
+                then:
+                  - service: climate.turn_off
+                    target:
+                      entity_id: "{{ portable_ac_3_entity }}"
+    default:
+      # Normal logic only if automation is to work
+      - if:
+          - condition: template
+            value_template: "{{ automation_should_run }}"
+        then:
+          # --- Original logic for fans and air conditioners ---
+
+          # --- Logic for On/Off Fans ---
+          - if:
+              - condition: template
+                value_template: "{{ fan_on_off_entity != '' and states(fan_on_off_entity) not in ['unavailable', 'unknown'] }}"
+            then:
+              - choose:
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ current_room_temp >= threshold_start and current_outdoor_temp <= outdoor_temp_max }}"
+                    sequence:
+                      - service: switch.turn_on
+                        target:
+                          entity_id: "{{ fan_on_off_entity }}"
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ current_room_temp < threshold_stop }}"
+                    sequence:
+                      - service: switch.turn_off
+                        target:
+                          entity_id: "{{ fan_on_off_entity }}"
+
+          # --- Logic for Ceiling Fans ---
+          - if:
+              - condition: template
+                value_template: "{{ ceiling_fan_entity != '' and states(ceiling_fan_entity) not in ['unavailable', 'unknown'] }}"
+            then:
+              - choose:
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ current_room_temp > (threshold_ac_high + 2) }}"
+                    sequence:
+                      - choose:
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ state_attr(ceiling_fan_entity, 'supported_features') | bitwise_and(1) }}"
+                            sequence:
+                              - service: fan.set_percentage
+                                target:
+                                  entity_id: "{{ ceiling_fan_entity }}"
+                                data:
+                                  percentage: 100
+                        default:
+                          - service: light.turn_on
+                            target:
+                              entity_id: "{{ ceiling_fan_entity }}"
+                            data:
+                              brightness_pct: 100
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ current_room_temp > threshold_ac_high }}"
+                    sequence:
+                      - choose:
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ state_attr(ceiling_fan_entity, 'supported_features') | bitwise_and(1) }}"
+                            sequence:
+                              - service: fan.set_percentage
+                                target:
+                                  entity_id: "{{ ceiling_fan_entity }}"
+                                data:
+                                  percentage: 75
+                        default:
+                          - service: light.turn_on
+                            target:
+                              entity_id: "{{ ceiling_fan_entity }}"
+                            data:
+                              brightness_pct: 75
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ current_room_temp > (threshold_ac_high - 2) }}"
+                    sequence:
+                      - choose:
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ state_attr(ceiling_fan_entity, 'supported_features') | bitwise_and(1) }}"
+                            sequence:
+                              - service: fan.set_percentage
+                                target:
+                                  entity_id: "{{ ceiling_fan_entity }}"
+                                data:
+                                  percentage: 50
+                        default:
+                          - service: light.turn_on
+                            target:
+                              entity_id: "{{ ceiling_fan_entity }}"
+                            data:
+                              brightness_pct: 50
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ current_room_temp > (threshold_ac_high - 4) }}"
+                    sequence:
+                      - choose:
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ state_attr(ceiling_fan_entity, 'supported_features') | bitwise_and(1) }}"
+                            sequence:
+                              - service: fan.set_percentage
+                                target:
+                                  entity_id: "{{ ceiling_fan_entity }}"
+                                data:
+                                  percentage: 25
+                        default:
+                          - service: light.turn_on
+                            target:
+                              entity_id: "{{ ceiling_fan_entity }}"
+                            data:
+                              brightness_pct: 25
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ current_room_temp < threshold_stop }}"
+                    sequence:
+                      - choose:
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ state_attr(ceiling_fan_entity, 'domain') == 'fan' }}"
+                            sequence:
+                              - service: fan.turn_off
+                                target:
+                                  entity_id: "{{ ceiling_fan_entity }}"
+                        default:
+                          - service: light.turn_off
+                            target:
+                              entity_id: "{{ ceiling_fan_entity }}"
+
+          # --- Logic for Portable AC 1 ---
+          - if:
+              - condition: template
+                value_template: "{{ portable_ac_1_entity != '' and states(portable_ac_1_entity) not in ['unavailable', 'unknown'] }}"
+            then:
+              - choose:
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ turn_off_ac_on_window_open and is_any_window_open }}"
+                    sequence:
+                      - service: climate.turn_off
+                        target:
+                          entity_id: "{{ portable_ac_1_entity }}"
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ not is_any_window_open }}"
+                    sequence:
+                      - choose:
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ is_heatwave and current_room_temp > threshold_ac_heatwave_indoor }}"
+                            sequence:
+                              - service: climate.set_hvac_mode
+                                target:
+                                  entity_id: "{{ portable_ac_1_entity }}"
+                                data:
+                                  hvac_mode: 'cool'
+                              - service: climate.set_fan_mode
+                                target:
+                                  entity_id: "{{ portable_ac_1_entity }}"
+                                data:
+                                  fan_mode: 'medium'
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ current_room_temp > (threshold_ac_high + 2) }}"
+                            sequence:
+                              - service: climate.set_hvac_mode
+                                target:
+                                  entity_id: "{{ portable_ac_1_entity }}"
+                                data:
+                                  hvac_mode: 'cool'
+                              - service: climate.set_fan_mode
+                                target:
+                                  entity_id: "{{ portable_ac_1_entity }}"
+                                data:
+                                  fan_mode: 'full'
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ current_room_temp > threshold_ac_high }}"
+                            sequence:
+                              - service: climate.set_hvac_mode
+                                target:
+                                  entity_id: "{{ portable_ac_1_entity }}"
+                                data:
+                                  hvac_mode: 'cool'
+                              - service: climate.set_fan_mode
+                                target:
+                                  entity_id: "{{ portable_ac_1_entity }}"
+                                data:
+                                  fan_mode: 'high'
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ current_room_temp > (threshold_ac_high - 1) }}"
+                            sequence:
+                              - service: climate.set_hvac_mode
+                                target:
+                                  entity_id: "{{ portable_ac_1_entity }}"
+                                data:
+                                  hvac_mode: 'cool'
+                              - service: climate.set_fan_mode
+                                target:
+                                  entity_id: "{{ portable_ac_1_entity }}"
+                                data:
+                                  fan_mode: 'medium'
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ current_room_temp > (threshold_ac_high - 2) }}"
+                            sequence:
+                              - service: climate.set_hvac_mode
+                                target:
+                                  entity_id: "{{ portable_ac_1_entity }}"
+                                data:
+                                  hvac_mode: 'cool'
+                              - service: climate.set_fan_mode
+                                target:
+                                  entity_id: "{{ portable_ac_1_entity }}"
+                                data:
+                                  fan_mode: 'low'
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ current_room_temp <= (threshold_ac_high - 3) and current_room_temp > threshold_stop }}"
+                            sequence:
+                              - service: climate.set_hvac_mode
+                                target:
+                                  entity_id: "{{ portable_ac_1_entity }}"
+                                data:
+                                  hvac_mode: 'fan_only'
+                              - service: climate.set_fan_mode
+                                target:
+                                  entity_id: "{{ portable_ac_1_entity }}"
+                                data:
+                                  fan_mode: 'auto'
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ current_room_temp < threshold_stop }}"
+                            sequence:
+                              - service: climate.turn_off
+                                target:
+                                  entity_id: "{{ portable_ac_1_entity }}"
+
+          # --- Logic for Portable AC 2 ---
+          - if:
+              - condition: template
+                value_template: "{{ portable_ac_2_entity != '' and states(portable_ac_2_entity) not in ['unavailable', 'unknown'] }}"
+            then:
+              - choose:
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ turn_off_ac_on_window_open and is_any_window_open }}"
+                    sequence:
+                      - service: climate.turn_off
+                        target:
+                          entity_id: "{{ portable_ac_2_entity }}"
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ not is_any_window_open }}"
+                    sequence:
+                      - choose:
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ is_heatwave and current_room_temp > threshold_ac_heatwave_indoor }}"
+                            sequence:
+                              - service: climate.set_hvac_mode
+                                target:
+                                  entity_id: "{{ portable_ac_2_entity }}"
+                                data:
+                                  hvac_mode: 'cool'
+                              - service: climate.set_fan_mode
+                                target:
+                                  entity_id: "{{ portable_ac_2_entity }}"
+                                data:
+                                  fan_mode: 'medium'
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ current_room_temp > threshold_ac_high }}"
+                            sequence:
+                              - service: climate.set_hvac_mode
+                                target:
+                                  entity_id: "{{ portable_ac_2_entity }}"
+                                data:
+                                  hvac_mode: 'cool'
+                              - service: climate.set_fan_mode
+                                target:
+                                  entity_id: "{{ portable_ac_2_entity }}"
+                                data:
+                                  fan_mode: 'high'
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ current_room_temp > (threshold_ac_high - 2) }}"
+                            sequence:
+                              - service: climate.set_hvac_mode
+                                target:
+                                  entity_id: "{{ portable_ac_2_entity }}"
+                                data:
+                                  hvac_mode: 'cool'
+                              - service: climate.set_fan_mode
+                                target:
+                                  entity_id: "{{ portable_ac_2_entity }}"
+                                data:
+                                  fan_mode: 'medium'
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ current_room_temp <= (threshold_ac_high - 3) and current_room_temp > threshold_stop }}"
+                            sequence:
+                              - service: climate.set_hvac_mode
+                                target:
+                                  entity_id: "{{ portable_ac_2_entity }}"
+                                data:
+                                  hvac_mode: 'fan_only'
+                              - service: climate.set_fan_mode
+                                target:
+                                  entity_id: "{{ portable_ac_2_entity }}"
+                                data:
+                                  fan_mode: 'auto'
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ current_room_temp < threshold_stop }}"
+                            sequence:
+                              - service: climate.turn_off
+                                target:
+                                  entity_id: "{{ portable_ac_2_entity }}"
+
+  # --- Logic for Portable AC 3 ---
+  - if:
+      - condition: template
+        value_template: "{{ portable_ac_3_entity != '' and states(portable_ac_3_entity) not in ['unavailable', 'unknown'] }}"
+    then:
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ turn_off_ac_on_window_open and is_any_window_open }}"
+            sequence:
+              - service: climate.turn_off
+                target:
+                  entity_id: "{{ portable_ac_3_entity }}"
+          - conditions:
+              - condition: template
+                value_template: "{{ not is_any_window_open }}"
+            sequence:
+              - choose:
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ is_heatwave and current_room_temp > threshold_ac_heatwave_indoor }}"
+                    sequence:
+                      - service: climate.set_hvac_mode
+                        target:
+                          entity_id: "{{ portable_ac_3_entity }}"
+                        data:
+                          hvac_mode: 'cool'
+                      - service: climate.set_fan_mode
+                        target:
+                          entity_id: "{{ portable_ac_3_entity }}"
+                        data:
+                          fan_mode: '3'
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ current_room_temp > (threshold_ac_high + 2) }}"
+                    sequence:
+                      - service: climate.set_hvac_mode
+                        target:
+                          entity_id: "{{ portable_ac_3_entity }}"
+                        data:
+                          hvac_mode: 'cool'
+                      - service: climate.set_fan_mode
+                        target:
+                          entity_id: "{{ portable_ac_3_entity }}"
+                        data:
+                          fan_mode: '5'
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ current_room_temp > threshold_ac_high }}"
+                    sequence:
+                      - service: climate.set_hvac_mode
+                        target:
+                          entity_id: "{{ portable_ac_3_entity }}"
+                        data:
+                          hvac_mode: 'cool'
+                      - service: climate.set_fan_mode
+                        target:
+                          entity_id: "{{ portable_ac_3_entity }}"
+                        data:
+                          fan_mode: '4'
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ current_room_temp > (threshold_ac_high - 1) }}"
+                    sequence:
+                      - service: climate.set_hvac_mode
+                        target:
+                          entity_id: "{{ portable_ac_3_entity }}"
+                        data:
+                          hvac_mode: 'cool'
+                      - service: climate.set_fan_mode
+                        target:
+                          entity_id: "{{ portable_ac_3_entity }}"
+                        data:
+                          fan_mode: '3'
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ current_room_temp > (threshold_ac_high - 2) }}"
+                    sequence:
+                      - service: climate.set_hvac_mode
+                        target:
+                          entity_id: "{{ portable_ac_3_entity }}"
+                        data:
+                          hvac_mode: 'cool'
+                      - service: climate.set_fan_mode
+                        target:
+                          entity_id: "{{ portable_ac_3_entity }}"
+                        data:
+                          fan_mode: '2'
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ current_room_temp <= (threshold_ac_high - 3) and current_room_temp > threshold_stop }}"
+                    sequence:
+                      - service: climate.set_hvac_mode
+                        target:
+                          entity_id: "{{ portable_ac_3_entity }}"
+                        data:
+                          hvac_mode: 'fan_only'
+                      - service: climate.set_fan_mode
+                        target:
+                          entity_id: "{{ portable_ac_3_entity }}"
+                        data:
+                          fan_mode: 'auto'
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ current_room_temp < threshold_stop }}"
+                    sequence:
+                      - service: climate.turn_off
+                        target:
+                          entity_id: "{{ portable_ac_3_entity }}"
