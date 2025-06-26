@@ -151,7 +151,6 @@ blueprint:
       selector:
         entity:
           domain: device_tracker #group can also be a group
-          multiple: true
       default: ""
 
 mode: queued
