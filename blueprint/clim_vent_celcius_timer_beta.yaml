@@ -1,5 +1,5 @@
 blueprint:
-  name: Advanced Ventilation/AC Management with Schedule (Celsius) tss
+  name: Advanced Ventilation/AC Management with Schedule (Celsius) Beta
   description: Intelligent control of fans and air conditioners based on indoor temperature, outdoor conditions, forecasted heatwave, window/door status, with optional schedule and timer controls.
   domain: automation
   input:
