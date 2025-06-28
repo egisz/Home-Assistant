@@ -1,6 +1,6 @@
 blueprint:
-  name: Advanced Ventilation/AC Management (Fahrenheit) Timer Shedule Presence Add Beta
-  description: Intelligent control of fans and air conditioners based on indoor temperature, outdoor conditions, forecasted heatwave, and **multiple window/door open/close status**.
+  name: Advanced Ventilation/AC Management with Schedule (Fahrenheit) Timer Shedule Presence Add Beta
+  description: Intelligent control of fans and air conditioners based on indoor temperature, outdoor conditions, forecasted heatwave, window/door status, with optional schedule and timer controls, adjusted for Fahrenheit.
   domain: automation
   input:
     temperature_sensor:
@@ -49,41 +49,41 @@ blueprint:
       description: Indoor temperature at which fans activate.
       selector:
         number:
-          min: 60
-          max: 85
+          min: 59 # 15C
+          max: 86 # 30C
           step: 1
           unit_of_measurement: "°F"
-      default: 75
+      default: 75.0 # 24C
     threshold_temp_stop_fan:
       name: Fan Stop Threshold (Indoor)
       description: Indoor temperature at which fans turn off.
       selector:
         number:
-          min: 60
-          max: 85
+          min: 59 # 15C
+          max: 86 # 30C
           step: 1
           unit_of_measurement: "°F"
-      default: 72
+      default: 72.0 # 22C
     threshold_temp_ac_high:
       name: AC High Temperature Threshold
       description: Indoor temperature to activate air conditioners in high mode.
       selector:
         number:
-          min: 70
-          max: 95
+          min: 68 # 20C
+          max: 95 # 35C
           step: 1
           unit_of_measurement: "°F"
-      default: 79
+      default: 79.0 # 26C
     threshold_temp_ac_heatwave:
       name: AC Heatwave Threshold (Indoor)
       description: Indoor temperature to activate AC when a forecasted heatwave is detected. Should be lower than the normal threshold.
       selector:
         number:
-          min: 65
-          max: 80
+          min: 65 # 18C
+          max: 77 # 25C
           step: 1
           unit_of_measurement: "°F"
-      default: 72
+      default: 72.0 # 22C
     outdoor_temperature_sensor:
       name: Outdoor Temperature Sensor (Optional)
       description: Outdoor temperature sensor for condition checks (actual outdoor temp).
@@ -97,11 +97,11 @@ blueprint:
       description: Maximum outdoor temperature to allow ventilation (to avoid bringing in hot air).
       selector:
         number:
-          min: 50
-          max: 85
+          min: 50 # 10C
+          max: 86 # 30C
           step: 1
           unit_of_measurement: "°F"
-      default: 77
+      default: 77.0 # 25C
     weather_forecast_entity:
       name: Weather Forecast Entity (Optional - for Heatwave Alert)
       description: Select your weather entity (e.g., weather.your_location) to get daily temperature forecasts.
@@ -114,11 +114,11 @@ blueprint:
       description: Daily forecasted temperature (from weather entity) above which a heatwave is considered "announced".
       selector:
         number:
-          min: 80
-          max: 105
+          min: 77 # 25C
+          max: 104 # 40C
           step: 1
           unit_of_measurement: "°F"
-      default: 86
+      default: 86.0 # 30C
     window_sensor_entities:
       name: Window/Door Sensors (Optional - for AC only)
       description: Multiple binary sensors for windows or doors. AC will be impacted if any are open.
@@ -138,6 +138,48 @@ blueprint:
         boolean:
       default: true
 
+    # --- TIME AND TIMER OPTIONS ---
+    enable_schedule:
+      name: Enable Schedule Control
+      description: Enable time-based schedule control (start/stop times)
+      selector:
+        boolean:
+      default: false
+    schedule_start_time:
+      name: Schedule Start Time
+      description: Time when HVAC control should start (only if schedule enabled)
+      selector:
+        time:
+      default: "08:00:00"
+    schedule_stop_time:
+      name: Schedule Stop Time
+      description: Time when HVAC control should stop - all devices will turn off (only if schedule enabled)
+      selector:
+        time:
+      default: "22:00:00"
+    schedule_days_of_week:
+      name: Schedule Days of Week
+      description: Select the days of the week for the schedule to be active.
+      selector:
+        select:
+          multiple: true
+          options:
+            - label: Monday
+              value: mon
+            - label: Tuesday
+              value: tue
+            - label: Wednesday
+              value: wed
+            - label: Thursday
+              value: thu
+            - label: Friday
+              value: fri
+            - label: Saturday
+              value: sat
+            - label: Sunday
+              value: sun
+      default: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+
     # --- PRESENCE DETECTION OPTION ---
     enable_presence_control:
       name: Enable Presence Control
@@ -151,7 +193,7 @@ blueprint:
       selector:
         entity:
           domain: device_tracker #group can also be a group
-      default: ""
+      default: [] # Changed default to an empty list for multiple entities
 
 mode: queued
 
@@ -168,6 +210,11 @@ variables:
   window_sensor_entities: !input window_sensor_entities
   turn_off_ac_on_window_open: !input turn_off_ac_on_window_open
 
+  # Variables for hourly timer features
+  enable_schedule: !input enable_schedule
+  schedule_start_time: !input schedule_start_time
+  schedule_stop_time: !input schedule_stop_time
+  schedule_days_of_week: !input schedule_days_of_week
   # Variable for presence control
   enable_presence_control: !input enable_presence_control
   presence_entity: !input presence_entity
@@ -189,11 +236,21 @@ trigger:
     entity_id: !input window_sensor_entities
     id: window_sensors_change
     enabled: "{{ window_sensor_entities | length > 0 }}"
+  # Triggers for schedule and timer
+  - platform: time
+    at: !input schedule_start_time
+    id: schedule_start
+    enabled: "{{ enable_schedule }}"
+  - platform: time
+    at: !input schedule_stop_time
+    id: schedule_stop
+    enabled: "{{ enable_schedule }}"
   # Trigger for presence detection
   - platform: state
     entity_id: !input presence_entity
     id: presence_change
-    enabled: "{{ enable_presence_control and presence_entity != '' }}"
+    enabled: "{{ enable_presence_control and presence_entity | length > 0 }}"
+
 
 condition:
   - condition: template
@@ -246,27 +303,58 @@ action:
           {{ false }}
         {% endif %}
 
+      # Control variables
+      is_within_schedule: >
+        {% if enable_schedule %}
+          {% set current_time = now().strftime('%H:%M:%S') %}
+          {% set start_time = schedule_start_time %}
+          {% set stop_time = schedule_stop_time %}
+          {% set current_day_of_week = now().strftime('%a').lower() %}
+          {% set selected_days = schedule_days_of_week %}
+
+          {% set time_condition = false %}
+          {% if start_time <= stop_time %}
+            {% set time_condition = start_time <= current_time <= stop_time %}
+          {% else %}
+            {% set time_condition = current_time >= start_time or current_time <= stop_time %}
+          {% endif %}
+
+          {{ time_condition and (current_day_of_week in selected_days) }}
+        {% else %}
+          {{ true }}
+        {% endif %}
+
       is_home: >
-        {% if enable_presence_control and presence_entity != '' %}
-          {{ is_state(presence_entity, 'home') }}
+        {% if enable_presence_control and presence_entity | length > 0 %}
+          {% set ns = namespace(any_home=false) %}
+          {% for entity_id in presence_entity %}
+            {% if is_state(entity_id, 'home') %}
+              {% set ns.any_home = true %}
+            {% endif %}
+          {% endfor %}
+          {{ ns.any_home }}
         {% else %}
           {{ true }}
         {% endif %}
 
       # Global variable to determine if automation should run
       automation_should_run: >
-        {{ is_home }}
+        {{ is_within_schedule and is_home }}
 
   # Special check for shutdown triggers
   - choose:
-      # If presence changes to not_home
+      # If the trigger is a scheduled shutdown (schedule_stop or presence away)
       - conditions:
-          - condition: and
+          - condition: or
             conditions:
               - condition: template
-                value_template: "{{ trigger.id == 'presence_change' }}"
-              - condition: template
-                value_template: "{{ not is_home }}" # If presence changes to not_home
+                value_template: "{{ trigger.id == 'schedule_stop' }}"
+              - condition: and
+                conditions:
+                  - condition: template
+                    value_template: "{{ trigger.id == 'presence_change' }}"
+                  - condition: template
+                    value_template: "{{ not is_home }}" # If presence changes to not_home
         sequence:
           # Stop all devices
           - parallel:
@@ -292,9 +380,9 @@ action:
                             target:
                               entity_id: "{{ ceiling_fan_entity }}"
                     default:
-                      - service: light.turn_off
-                        target:
-                          entity_id: "{{ ceiling_fan_entity }}"
+                        - service: light.turn_off
+                          target:
+                            entity_id: "{{ ceiling_fan_entity }}"
               # Turn off all air conditioners
               - if:
                   - condition: template
@@ -354,7 +442,7 @@ action:
               - choose:
                   - conditions:
                       - condition: template
-                        value_template: "{{ current_room_temp > (threshold_ac_high + 4) }}"
+                        value_template: "{{ current_room_temp > (threshold_ac_high + 3.6) }}" # ~2C above high threshold
                     sequence:
                       - choose:
                           - conditions:
@@ -367,11 +455,11 @@ action:
                                 data:
                                   percentage: 100
                         default:
-                          - service: light.turn_on
-                            target:
-                              entity_id: "{{ ceiling_fan_entity }}"
-                            data:
-                              brightness_pct: 100
+                            - service: light.turn_on
+                              target:
+                                entity_id: "{{ ceiling_fan_entity }}"
+                              data:
+                                brightness_pct: 100
                   - conditions:
                       - condition: template
                         value_template: "{{ current_room_temp > threshold_ac_high }}"
@@ -387,14 +475,14 @@ action:
                                 data:
                                   percentage: 75
                         default:
-                          - service: light.turn_on
-                            target:
-                              entity_id: "{{ ceiling_fan_entity }}"
-                            data:
-                              brightness_pct: 75
+                            - service: light.turn_on
+                              target:
+                                entity_id: "{{ ceiling_fan_entity }}"
+                              data:
+                                brightness_pct: 75
                   - conditions:
                       - condition: template
-                        value_template: "{{ current_room_temp > (threshold_ac_high - 4) }}"
+                        value_template: "{{ current_room_temp > (threshold_ac_high - 3.6) }}" # ~2C below high threshold
                     sequence:
                       - choose:
                           - conditions:
@@ -407,14 +495,14 @@ action:
                                 data:
                                   percentage: 50
                         default:
-                          - service: light.turn_on
-                            target:
-                              entity_id: "{{ ceiling_fan_entity }}"
-                            data:
-                              brightness_pct: 50
+                            - service: light.turn_on
+                              target:
+                                entity_id: "{{ ceiling_fan_entity }}"
+                              data:
+                                brightness_pct: 50
                   - conditions:
                       - condition: template
-                        value_template: "{{ current_room_temp > (threshold_ac_high - 7) }}"
+                        value_template: "{{ current_room_temp > (threshold_ac_high - 7.2) }}" # ~4C below high threshold
                     sequence:
                       - choose:
                           - conditions:
@@ -427,11 +515,11 @@ action:
                                 data:
                                   percentage: 25
                         default:
-                          - service: light.turn_on
-                            target:
-                              entity_id: "{{ ceiling_fan_entity }}"
-                            data:
-                              brightness_pct: 25
+                            - service: light.turn_on
+                              target:
+                                entity_id: "{{ ceiling_fan_entity }}"
+                              data:
+                                brightness_pct: 25
                   - conditions:
                       - condition: template
                         value_template: "{{ current_room_temp < threshold_stop }}"
@@ -445,9 +533,9 @@ action:
                                 target:
                                   entity_id: "{{ ceiling_fan_entity }}"
                         default:
-                          - service: light.turn_off
-                            target:
-                              entity_id: "{{ ceiling_fan_entity }}"
+                            - service: light.turn_off
+                              target:
+                                entity_id: "{{ ceiling_fan_entity }}"
 
           # --- Logic for Portable AC 1 ---
           - if:
@@ -483,7 +571,7 @@ action:
                                   fan_mode: 'medium'
                           - conditions:
                               - condition: template
-                                value_template: "{{ current_room_temp > (threshold_ac_high + 4) }}"
+                                value_template: "{{ current_room_temp > (threshold_ac_high + 3.6) }}" # ~2C above high threshold
                             sequence:
                               - service: climate.set_hvac_mode
                                 target:
@@ -511,7 +599,7 @@ action:
                                   fan_mode: 'high'
                           - conditions:
                               - condition: template
-                                value_template: "{{ current_room_temp > (threshold_ac_high - 2) }}"
+                                value_template: "{{ current_room_temp > (threshold_ac_high - 1.8) }}" # ~1C below high threshold
                             sequence:
                               - service: climate.set_hvac_mode
                                 target:
@@ -525,7 +613,7 @@ action:
                                   fan_mode: 'medium'
                           - conditions:
                               - condition: template
-                                value_template: "{{ current_room_temp > (threshold_ac_high - 4) }}"
+                                value_template: "{{ current_room_temp > (threshold_ac_high - 3.6) }}" # ~2C below high threshold
                             sequence:
                               - service: climate.set_hvac_mode
                                 target:
@@ -539,7 +627,7 @@ action:
                                   fan_mode: 'low'
                           - conditions:
                               - condition: template
-                                value_template: "{{ current_room_temp <= (threshold_ac_high - 5) and current_room_temp > threshold_stop }}"
+                                value_template: "{{ current_room_temp <= (threshold_ac_high - 5.4) and current_room_temp > threshold_stop }}" # ~3C below high threshold
                             sequence:
                               - service: climate.set_hvac_mode
                                 target:
@@ -607,7 +695,7 @@ action:
                                   fan_mode: 'high'
                           - conditions:
                               - condition: template
-                                value_template: "{{ current_room_temp > (threshold_ac_high - 4) }}"
+                                value_template: "{{ current_room_temp > (threshold_ac_high - 3.6) }}" # ~2C below high threshold
                             sequence:
                               - service: climate.set_hvac_mode
                                 target:
@@ -621,7 +709,7 @@ action:
                                   fan_mode: 'medium'
                           - conditions:
                               - condition: template
-                                value_template: "{{ current_room_temp <= (threshold_ac_high - 5) and current_room_temp > threshold_stop }}"
+                                value_template: "{{ current_room_temp <= (threshold_ac_high - 5.4) and current_room_temp > threshold_stop }}" # ~3C below high threshold
                             sequence:
                               - service: climate.set_hvac_mode
                                 target:
@@ -672,21 +760,7 @@ action:
                                 target:
                                   entity_id: "{{ portable_ac_3_entity }}"
                                 data:
-                                  fan_mode: '3'
-                          - conditions:
-                              - condition: template
-                                value_template: "{{ current_room_temp > (threshold_ac_high + 4) }}"
-                            sequence:
-                              - service: climate.set_hvac_mode
-                                target:
-                                  entity_id: "{{ portable_ac_3_entity }}"
-                                data:
-                                  hvac_mode: 'cool'
-                              - service: climate.set_fan_mode
-                                target:
-                                  entity_id: "{{ portable_ac_3_entity }}"
-                                data:
-                                  fan_mode: '5'
+                                  fan_mode: '3' #medium
                           - conditions:
                               - condition: template
                                 value_template: "{{ current_room_temp > threshold_ac_high }}"
@@ -700,10 +774,10 @@ action:
                                 target:
                                   entity_id: "{{ portable_ac_3_entity }}"
                                 data:
-                                  fan_mode: '4'
+                                  fan_mode: '4' #high
                           - conditions:
                               - condition: template
-                                value_template: "{{ current_room_temp > (threshold_ac_high - 2) }}"
+                                value_template: "{{ current_room_temp > (threshold_ac_high - 3.6) }}" # ~2C below high threshold
                             sequence:
                               - service: climate.set_hvac_mode
                                 target:
@@ -714,24 +788,10 @@ action:
                                 target:
                                   entity_id: "{{ portable_ac_3_entity }}"
                                 data:
-                                  fan_mode: '3'
+                                  fan_mode: '2' #low
                           - conditions:
                               - condition: template
-                                value_template: "{{ current_room_temp > (threshold_ac_high - 4) }}"
-                            sequence:
-                              - service: climate.set_hvac_mode
-                                target:
-                                  entity_id: "{{ portable_ac_3_entity }}"
-                                data:
-                                  hvac_mode: 'cool'
-                              - service: climate.set_fan_mode
-                                target:
-                                  entity_id: "{{ portable_ac_3_entity }}"
-                                data:
-                                  fan_mode: '2'
-                          - conditions:
-                              - condition: template
-                                value_template: "{{ current_room_temp <= (threshold_ac_high - 5) and current_room_temp > threshold_stop }}"
+                                value_template: "{{ current_room_temp <= (threshold_ac_high - 5.4) and current_room_temp > threshold_stop }}" # ~3C below high threshold
                             sequence:
                               - service: climate.set_hvac_mode
                                 target:
