@@ -257,7 +257,7 @@ action:
         - condition: template
           value_template: '{{ current_outdoor_temp > outdoor_temp_max }}'
         sequence:
-        - service: input_select.select_option
+        - service: select.select_option
           target:
             entity_id: '{{ ventilation_bypass_mode }}'
           data:
@@ -266,7 +266,7 @@ action:
         - condition: template
           value_template: '{{ current_outdoor_temp <= outdoor_temp_max }}'
         sequence:
-        - service: input_select.select_option
+        - service: select.select_option
           target:
             entity_id: '{{ ventilation_bypass_mode }}'
           data:
