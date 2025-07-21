@@ -19,6 +19,8 @@ blueprint:
     ventilation_bypass_mode:
       name: Ventilation Bypass Mode (Optional)
       description: Input select for ventilation bypass (Closed/Open).
+      selector:
+        entity:      
     ceiling_fan_entity:
       name: Ceiling Fan (Optional)
       description: Fan entity or dimmable light entity for a ceiling fan.
