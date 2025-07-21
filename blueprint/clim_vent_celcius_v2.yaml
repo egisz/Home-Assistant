@@ -26,10 +26,6 @@ blueprint:
     ceiling_fan_entity:
       name: Ceiling Fan (Optional)
       description: Fan entity or dimmable light entity for a ceiling fan.
-      selector:
-        entity:
-          domain: fan
-      default: ""
     portable_ac_1_entity:
       name: Portable AC 1 (Optional - Many Modes)
       description: Climate entity for an AC with various fan modes (silent, low, medium, high, full, Auto).
