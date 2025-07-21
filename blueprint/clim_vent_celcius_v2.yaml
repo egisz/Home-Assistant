@@ -22,7 +22,7 @@ blueprint:
       selector:
         entity:
           domain:
-          - input_select
+          - select
           multiple: false
       default: ''
     ceiling_fan_entity:
