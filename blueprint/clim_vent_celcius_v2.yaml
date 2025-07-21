@@ -16,7 +16,7 @@ blueprint:
         entity:
           domain: switch
       default: ""
-      ventilation_bypass_mode:
+    ventilation_bypass_mode:
       name: Ventilation Bypass Mode (Optional)
       description: Input select for ventilation bypass (Closed/Open).
       selector:
