@@ -142,6 +142,12 @@ blueprint:
       selector:
         boolean:
       default: true
+    disable_ac_when_home:
+      name: Disable AC Automation When At Home
+      description: If enabled, AC automation will be disabled when anyone is at home (zone.home is occupied).
+      selector:
+        boolean:
+      default: false
 
 mode: queued
 
@@ -158,6 +164,7 @@ variables:
   forecast_temp_heatwave_threshold: !input forecast_temp_heatwave_threshold
   window_sensor_entities: !input window_sensor_entities
   turn_off_ac_on_window_open: !input turn_off_ac_on_window_open
+  disable_ac_when_home: !input disable_ac_when_home
 
 trigger:
   - platform: state
@@ -379,6 +386,8 @@ action:
   - if:
       - condition: template
         value_template: "{{ portable_ac_1_entity != '' and states(portable_ac_1_entity) not in ['unavailable', 'unknown'] }}"
+      - condition: template
+        value_template: "{{ not (disable_ac_when_home and (state_attr('zone.home', 'persons') | length > 0)) }}"
     then:
       - choose:
           - conditions:
