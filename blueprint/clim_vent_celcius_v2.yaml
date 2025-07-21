@@ -16,6 +16,15 @@ blueprint:
         entity:
           domain: switch
       default: ""
+      ventilation_bypass_mode:
+      name: Ventilation Bypass Mode (Optional)
+      description: Input select for ventilation bypass (Closed/Open).
+      selector:
+        entity:
+          domain:
+          - input_select
+          multiple: false
+      default: ''
     ceiling_fan_entity:
       name: Ceiling Fan (Optional)
       description: Fan entity or dimmable light entity for a ceiling fan.
@@ -142,6 +151,7 @@ mode: queued
 
 variables:
   fan_on_off_entity: !input fan_on_off_entity
+  ventilation_bypass_mode: !input ventilation_bypass_mode
   ceiling_fan_entity: !input ceiling_fan_entity
   portable_ac_1_entity: !input portable_ac_1_entity
   portable_ac_2_entity: !input portable_ac_2_entity
@@ -242,6 +252,29 @@ action:
               - service: switch.turn_off
                 target:
                   entity_id: "{{ fan_on_off_entity }}"
+  - if:
+    - condition: template
+      value_template: '{{ ventilation_bypass_mode != '''' and states(ventilation_bypass_mode) not in [''unavailable'', ''unknown''] }}'
+    then:
+    - choose:
+      - conditions:
+        - condition: template
+          value_template: '{{ current_outdoor_temp > outdoor_temp_max }}'
+        sequence:
+        - service: input_select.select_option
+          target:
+            entity_id: '{{ ventilation_bypass_mode }}'
+          data:
+            option: 'Closed'
+      - conditions:
+        - condition: template
+          value_template: '{{ current_outdoor_temp <= outdoor_temp_max }}'
+        sequence:
+        - service: input_select.select_option
+          target:
+            entity_id: '{{ ventilation_bypass_mode }}'
+          data:
+            option: 'Open'
 
   # --- Logic for Ceiling Fans ---
   - if:
