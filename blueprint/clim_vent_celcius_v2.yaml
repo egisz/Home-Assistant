@@ -21,10 +21,8 @@ blueprint:
       description: Input select for ventilation bypass (Closed/Open).
       selector:
         entity:
-          domain:
-          - select
-          multiple: false
-      default: ''
+          domain: sensor
+          device_class: temperature
     ceiling_fan_entity:
       name: Ceiling Fan (Optional)
       description: Fan entity or dimmable light entity for a ceiling fan.
